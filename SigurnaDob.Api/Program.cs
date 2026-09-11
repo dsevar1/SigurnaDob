@@ -69,8 +69,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
-
+// NAMJERNO bez UseHttpsRedirection(): launchSettings.json "https" profil veže Kestrel na http i https
+// istovremeno, pa bi ovaj middleware 307-redirectao svaki http poziv na https. HttpClient (App strane)
+// automatski prati redirect, ali .NET tada NAMJERNO briše Authorization header jer redirect ide na
+// drugi port/shemu (cross-origin sigurnosno pravilo) - token nikad nije stigao do Api-ja, 401 na sve
+// zaštićene endpointe. App i Api komuniciraju isključivo preko http://localhost na istom stroju, pa
+// prisilan https redirect ovdje nema sigurnosnu svrhu, samo je tiho lomio autorizaciju.
 app.UseAuthentication();
 app.UseAuthorization();
 

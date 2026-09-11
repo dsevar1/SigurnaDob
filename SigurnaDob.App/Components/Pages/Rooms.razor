@@ -1,0 +1,229 @@
+@page "/rooms"
+@inject HttpClient Http
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Sobe</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Sobe</MudText>
+
+<MudTable T="RoomDto" ServerData="ServerReload" @ref="_table" Hover="true" Dense="true">
+    <ToolBarContent>
+        <MudTextField @bind-Value="_search" Label="Pretraga (broj sobe)" Immediate="false"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="mr-4" Style="max-width:220px" />
+        <MudSelect T="int?" @bind-Value="_roomStatusId" Label="Status" Clearable="true" Class="mr-4" Style="min-width:200px">
+            @foreach (var status in _roomStatuses)
+            {
+                <MudSelectItem T="int?" Value="@((int?)status.Id)">@status.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudNumericField T="int?" @bind-Value="_minCapacity" Label="Min. kapacitet" Class="mr-4" Style="max-width:140px" />
+        <MudNumericField T="int?" @bind-Value="_maxCapacity" Label="Maks. kapacitet" Class="mr-4" Style="max-width:140px" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyFiltersAsync" Class="mr-2">Filtriraj</MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="ResetFiltersAsync">Reset</MudButton>
+        <MudSpacer />
+        <AuthorizeView Roles="Admin,Coordinator">
+            <Authorized>
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenCreateDialogAsync">
+                    Nova soba
+                </MudButton>
+            </Authorized>
+        </AuthorizeView>
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel SortLabel="roomNumber" T="RoomDto">Broj sobe</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="capacity" T="RoomDto">Kapacitet</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortLabel="status" T="RoomDto">Status</MudTableSortLabel></MudTh>
+        <MudTh>Popunjenost</MudTh>
+        <MudTh>Slobodno</MudTh>
+        <AuthorizeView Roles="Admin,Coordinator" Context="headerAuthContext">
+            <Authorized><MudTh>Akcije</MudTh></Authorized>
+        </AuthorizeView>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Broj sobe">@context.RoomNumber</MudTd>
+        <MudTd DataLabel="Kapacitet">@context.Capacity</MudTd>
+        <MudTd DataLabel="Status">@context.RoomStatusName</MudTd>
+        <MudTd DataLabel="Popunjenost">@context.CurrentOccupancy</MudTd>
+        <MudTd DataLabel="Slobodno">@context.FreeCapacity</MudTd>
+        <AuthorizeView Roles="Admin,Coordinator" Context="rowAuthContext">
+            <Authorized>
+                <MudTd DataLabel="Akcije">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditDialogAsync(context))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteRoomAsync(context))" />
+                </MudTd>
+            </Authorized>
+        </AuthorizeView>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>Nema soba koje odgovaraju filterima.</MudText>
+    </NoRecordsContent>
+    <LoadingContent>
+        <MudText>Učitavanje...</MudText>
+    </LoadingContent>
+</MudTable>
+
+@code {
+    private MudTable<RoomDto> _table = null!;
+    private List<LookupDto> _roomStatuses = new();
+    private string? _search;
+    private int? _roomStatusId;
+    private int? _minCapacity;
+    private int? _maxCapacity;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _roomStatuses = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/room-statuses") ?? new();
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti šifrarnik statusa soba. Provjeri je li API pokrenut.", Severity.Error);
+        }
+    }
+
+    private async Task<TableData<RoomDto>> ServerReload(TableState state, CancellationToken cancellationToken)
+    {
+        var query = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            query.Add($"search={Uri.EscapeDataString(_search)}");
+        }
+        if (_roomStatusId is not null)
+        {
+            query.Add($"roomStatusId={_roomStatusId}");
+        }
+        if (_minCapacity is not null)
+        {
+            query.Add($"minCapacity={_minCapacity}");
+        }
+        if (_maxCapacity is not null)
+        {
+            query.Add($"maxCapacity={_maxCapacity}");
+        }
+        if (!string.IsNullOrEmpty(state.SortLabel) && state.SortDirection != SortDirection.None)
+        {
+            query.Add($"sortBy={state.SortLabel}");
+            query.Add($"sortDescending={(state.SortDirection == SortDirection.Descending ? "true" : "false")}");
+        }
+
+        var url = "api/rooms" + (query.Count > 0 ? "?" + string.Join("&", query) : string.Empty);
+
+        try
+        {
+            var rooms = await Http.GetFromJsonAsync<List<RoomDto>>(url, cancellationToken) ?? new();
+            return new TableData<RoomDto> { Items = rooms, TotalItems = rooms.Count };
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti popis soba. Provjeri je li API pokrenut.", Severity.Error);
+            return new TableData<RoomDto> { Items = Array.Empty<RoomDto>(), TotalItems = 0 };
+        }
+    }
+
+    private Task ApplyFiltersAsync() => _table.ReloadServerData();
+
+    private Task ResetFiltersAsync()
+    {
+        _search = null;
+        _roomStatusId = null;
+        _minCapacity = null;
+        _maxCapacity = null;
+        return _table.ReloadServerData();
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(RoomFormDialog.ExistingRoom), null);
+        parameters.Add(nameof(RoomFormDialog.RoomStatuses), _roomStatuses);
+
+        var dialog = await DialogService.ShowAsync<RoomFormDialog>("Nova soba", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false } && result.Data is RoomFormDialog.RoomFormResult data)
+        {
+            await CreateRoomAsync(data);
+        }
+    }
+
+    private async Task OpenEditDialogAsync(RoomDto room)
+    {
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(RoomFormDialog.ExistingRoom), room);
+        parameters.Add(nameof(RoomFormDialog.RoomStatuses), _roomStatuses);
+
+        var dialog = await DialogService.ShowAsync<RoomFormDialog>("Uredi sobu", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false } && result.Data is RoomFormDialog.RoomFormResult data)
+        {
+            await UpdateRoomAsync(room.Id, data);
+        }
+    }
+
+    private async Task CreateRoomAsync(RoomFormDialog.RoomFormResult data)
+    {
+        var dto = new RoomCreateDto { RoomNumber = data.RoomNumber, Capacity = data.Capacity, RoomStatusId = data.RoomStatusId };
+        var response = await Http.PostAsJsonAsync("api/rooms", dto);
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Soba je kreirana.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom kreiranja sobe.");
+        }
+    }
+
+    private async Task UpdateRoomAsync(int id, RoomFormDialog.RoomFormResult data)
+    {
+        var dto = new RoomUpdateDto { RoomNumber = data.RoomNumber, Capacity = data.Capacity, RoomStatusId = data.RoomStatusId };
+        var response = await Http.PutAsJsonAsync($"api/rooms/{id}", dto);
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Soba je ažurirana.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom ažuriranja sobe.");
+        }
+    }
+
+    private async Task DeleteRoomAsync(RoomDto room)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Potvrda brisanja",
+            $"Jesi li siguran/na da želiš obrisati sobu {room.RoomNumber}?",
+            yesText: "Obriši", cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var response = await Http.DeleteAsync($"api/rooms/{room.Id}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Soba je obrisana.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom brisanja sobe.");
+        }
+    }
+
+    private async Task ShowErrorAsync(HttpResponseMessage response, string fallbackMessage)
+    {
+        var message = await response.Content.ReadAsStringAsync();
+        Snackbar.Add(string.IsNullOrWhiteSpace(message) ? fallbackMessage : message, Severity.Error);
+    }
+}

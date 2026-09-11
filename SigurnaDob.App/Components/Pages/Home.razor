@@ -1,7 +1,10 @@
-﻿@page "/"
+@page "/"
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Početna</PageTitle>
 
-<h1>Hello, world!</h1>
-
-Welcome to your new app.
+<AuthorizeView>
+    <Authorized>
+        <MudText Typo="Typo.h4" Class="mb-2">Dobrodošli, @context.User.Identity?.Name</MudText>
+        <MudText Typo="Typo.body1">Odaberite modul iz izbornika s lijeve strane.</MudText>
+    </Authorized>
+</AuthorizeView>

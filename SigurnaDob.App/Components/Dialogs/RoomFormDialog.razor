@@ -1,0 +1,62 @@
+<MudDialog>
+    <TitleContent>@(ExistingRoom is null ? "Nova soba" : "Uredi sobu")</TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudTextField @bind-Value="_roomNumber" Label="Broj sobe" Required="true"
+                          RequiredError="Broj sobe je obavezan." Class="mb-2" />
+            <MudNumericField @bind-Value="_capacity" Label="Kapacitet" Required="true" Min="1"
+                              RequiredError="Kapacitet je obavezan." Class="mb-2" />
+            <MudSelect T="int" @bind-Value="_roomStatusId" Label="Status" Required="true"
+                       RequiredError="Status je obavezan.">
+                @foreach (var status in RoomStatuses)
+                {
+                    <MudSelectItem T="int" Value="@status.Id">@status.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Spremi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public record RoomFormResult(string RoomNumber, int Capacity, int RoomStatusId);
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public RoomDto? ExistingRoom { get; set; }
+    [Parameter] public List<LookupDto> RoomStatuses { get; set; } = new();
+
+    private MudForm _form = null!;
+    private string _roomNumber = string.Empty;
+    private int _capacity = 1;
+    private int _roomStatusId;
+
+    protected override void OnInitialized()
+    {
+        if (ExistingRoom is { } room)
+        {
+            _roomNumber = room.RoomNumber;
+            _capacity = room.Capacity;
+            _roomStatusId = room.RoomStatusId;
+        }
+        else if (RoomStatuses.Count > 0)
+        {
+            _roomStatusId = RoomStatuses[0].Id;
+        }
+    }
+
+    private async Task Submit()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(new RoomFormResult(_roomNumber, _capacity, _roomStatusId)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
