@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SigurnaDob.Api.Data;
 
@@ -10,9 +11,11 @@ using SigurnaDob.Api.Data;
 namespace SigurnaDob.Api.Data.Migrations
 {
     [DbContext(typeof(SigurnaDobDbContext))]
-    partial class SigurnaDobDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260911115520_SeedDemoRooms")]
+    partial class SeedDemoRooms
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
@@ -138,28 +141,6 @@ namespace SigurnaDob.Api.Data.Migrations
                         .HasDatabaseName("ix_app_roles_name");
 
                     b.ToTable("app_roles", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Name = "Admin"
-                        },
-                        new
-                        {
-                            Id = 2,
-                            Name = "Coordinator"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            Name = "Caregiver"
-                        },
-                        new
-                        {
-                            Id = 4,
-                            Name = "FamilyMember"
-                        });
                 });
 
             modelBuilder.Entity("SigurnaDob.Shared.Models.AppUser", b =>
@@ -211,41 +192,6 @@ namespace SigurnaDob.Api.Data.Migrations
                         .HasDatabaseName("ix_app_users_username");
 
                     b.ToTable("app_users", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            CreatedAt = new DateTime(2026, 9, 11, 0, 0, 0, 0, DateTimeKind.Utc),
-                            IsActive = true,
-                            PasswordHash = "AQAAAAIAAYagAAAAEFLutaNEinL3QdP2YNWoaL0Qr/tPTAdVIGGkQWYoYdtWxHmHiebIUxFM3ohoxjos1Q==",
-                            Username = "admin"
-                        },
-                        new
-                        {
-                            Id = 2,
-                            CreatedAt = new DateTime(2026, 9, 11, 0, 0, 0, 0, DateTimeKind.Utc),
-                            IsActive = true,
-                            PasswordHash = "AQAAAAIAAYagAAAAEBJLKQlZj3dSLD7NuQ99SlhqMhe0HpLJdNuq/Hs8gY92z7XYk8OA1irGdOWBAkaUzA==",
-                            Username = "coordinator"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            CreatedAt = new DateTime(2026, 9, 11, 0, 0, 0, 0, DateTimeKind.Utc),
-                            IsActive = true,
-                            PasswordHash = "AQAAAAIAAYagAAAAEOwSz/Mzqr6ENjI97rKG0mwoE4sk8cTvIxWnKGBdhQ3Gil76gFMpwule2AkdoIRFPA==",
-                            StaffId = 1,
-                            Username = "caregiver"
-                        },
-                        new
-                        {
-                            Id = 4,
-                            CreatedAt = new DateTime(2026, 9, 11, 0, 0, 0, 0, DateTimeKind.Utc),
-                            IsActive = true,
-                            PasswordHash = "AQAAAAIAAYagAAAAELVhZzQ0bK3F1Lz15ptwP/gNojjzJzaj4tTXcuEKlAVQwhHq3Crgsn/2yTToOi4zmQ==",
-                            Username = "familymember"
-                        });
                 });
 
             modelBuilder.Entity("SigurnaDob.Shared.Models.AppUserRole", b =>
@@ -265,28 +211,6 @@ namespace SigurnaDob.Api.Data.Migrations
                         .HasDatabaseName("ix_app_user_roles_app_role_id");
 
                     b.ToTable("app_user_roles", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            AppUserId = 1,
-                            AppRoleId = 1
-                        },
-                        new
-                        {
-                            AppUserId = 2,
-                            AppRoleId = 2
-                        },
-                        new
-                        {
-                            AppUserId = 3,
-                            AppRoleId = 3
-                        },
-                        new
-                        {
-                            AppUserId = 4,
-                            AppRoleId = 4
-                        });
                 });
 
             modelBuilder.Entity("SigurnaDob.Shared.Models.CareTask", b =>
@@ -751,15 +675,6 @@ namespace SigurnaDob.Api.Data.Migrations
                         .HasName("pk_staff");
 
                     b.ToTable("staff", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            FullName = "Ivana Njegovateljica",
-                            IsActive = true,
-                            Position = "Njegovateljica"
-                        });
                 });
 
             modelBuilder.Entity("SigurnaDob.Shared.Models.VisitRequest", b =>

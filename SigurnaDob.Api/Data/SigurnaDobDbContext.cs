@@ -219,5 +219,80 @@ public class SigurnaDobDbContext : DbContext
             new ActivityType { Id = 4, Name = "Edukativna" },
             new ActivityType { Id = 5, Name = "Izlet" }
         );
+
+        // Seed demo soba (za ručno testiranje kapaciteta i pravila dodjele prema statusu sobe)
+        modelBuilder.Entity<Room>().HasData(
+            new Room { Id = 1, RoomNumber = "101", Capacity = 1, RoomStatusId = 1 },
+            new Room { Id = 2, RoomNumber = "102", Capacity = 2, RoomStatusId = 1 },
+            new Room { Id = 3, RoomNumber = "103", Capacity = 4, RoomStatusId = 1 },
+            new Room { Id = 4, RoomNumber = "104", Capacity = 2, RoomStatusId = 2 }
+        );
+
+        // Seed uloga
+        modelBuilder.Entity<AppRole>().HasData(
+            new AppRole { Id = 1, Name = "Admin" },
+            new AppRole { Id = 2, Name = "Coordinator" },
+            new AppRole { Id = 3, Name = "Caregiver" },
+            new AppRole { Id = 4, Name = "FamilyMember" }
+        );
+
+        // Seed demo djelatnika (za demo Caregiver račun)
+        modelBuilder.Entity<Staff>().HasData(
+            new Staff { Id = 1, FullName = "Ivana Njegovateljica", Position = "Njegovateljica", IsActive = true }
+        );
+
+        // Seed demo korisničkih računa - lozinke NISU tajna, namjerno su poznate demo vrijednosti:
+        // admin/Admin123!, coordinator/Coord123!, caregiver/Caregiver123!, familymember/Family123!
+        //
+        // VAŽNO: hash je unaprijed izračunat (PasswordHasher<AppUser>.HashPassword) i zalijepljen kao
+        // literal, NE poziva se HashPassword ovdje. HashPassword svaki put generira nasumičnu sol pa bi
+        // poziv unutar OnModelCreating pri svakom pokretanju aplikacije proizveo drugačiji hash nego onaj
+        // zabetoniran u migraciji, što EF Core prijavljuje kao "model se mijenja pri svakom buildu".
+        var seedCreatedAt = new DateTime(2026, 9, 11, 0, 0, 0, DateTimeKind.Utc);
+
+        modelBuilder.Entity<AppUser>().HasData(
+            new AppUser
+            {
+                Id = 1,
+                Username = "admin",
+                PasswordHash = "AQAAAAIAAYagAAAAEFLutaNEinL3QdP2YNWoaL0Qr/tPTAdVIGGkQWYoYdtWxHmHiebIUxFM3ohoxjos1Q==",
+                IsActive = true,
+                CreatedAt = seedCreatedAt
+            },
+            new AppUser
+            {
+                Id = 2,
+                Username = "coordinator",
+                PasswordHash = "AQAAAAIAAYagAAAAEBJLKQlZj3dSLD7NuQ99SlhqMhe0HpLJdNuq/Hs8gY92z7XYk8OA1irGdOWBAkaUzA==",
+                IsActive = true,
+                CreatedAt = seedCreatedAt
+            },
+            new AppUser
+            {
+                Id = 3,
+                Username = "caregiver",
+                PasswordHash = "AQAAAAIAAYagAAAAEOwSz/Mzqr6ENjI97rKG0mwoE4sk8cTvIxWnKGBdhQ3Gil76gFMpwule2AkdoIRFPA==",
+                IsActive = true,
+                StaffId = 1,
+                CreatedAt = seedCreatedAt
+            },
+            new AppUser
+            {
+                Id = 4,
+                Username = "familymember",
+                PasswordHash = "AQAAAAIAAYagAAAAELVhZzQ0bK3F1Lz15ptwP/gNojjzJzaj4tTXcuEKlAVQwhHq3Crgsn/2yTToOi4zmQ==",
+                IsActive = true,
+                // FamilyContactId ostaje null - FamilyContact zahtijeva postojećeg Resident-a (Dan 2)
+                CreatedAt = seedCreatedAt
+            }
+        );
+
+        // Poveži svaki demo račun s njegovom ulogom (1:1 za demo svrhe)
+        modelBuilder.Entity<AppUserRole>().HasData(
+            new AppUserRole { AppUserId = 1, AppRoleId = 1 },
+            new AppUserRole { AppUserId = 2, AppRoleId = 2 },
+            new AppUserRole { AppUserId = 3, AppRoleId = 3 },
+            new AppUserRole { AppUserId = 4, AppRoleId = 4 }
+        );
     }
 }
