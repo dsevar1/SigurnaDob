@@ -1,0 +1,170 @@
+// SigurnaDob - DBML model
+// Konvencije: sve tablice imaju int PK (identity), sve FK su int.
+// Lookup tablice (statusi/tipovi) su prave tablice sa seed podacima, ne DBML enum,
+// jer se dohvaćaju preko API lookup endpointa (naziv se prikazuje, ID se sprema).
+
+Table resident_statuses {
+  id int [pk, increment]
+  name varchar [not null, unique]
+  note: 'Seed: U pripremi za prijem, Aktivan, Privremeno odsutan, Premješten iz doma, Arhiviran'
+}
+
+Table room_statuses {
+  id int [pk, increment]
+  name varchar [not null, unique]
+  note: 'Seed: U uporabi, Održavanje, Izvan uporabe'
+}
+
+Table care_task_types {
+  id int [pk, increment]
+  name varchar [not null, unique]
+  note: 'Seed: Terapija, Prehrana, Higijena, Pratnja, Administrativno'
+}
+
+Table care_task_statuses {
+  id int [pk, increment]
+  name varchar [not null, unique]
+  note: 'Seed: Novo, Dodijeljeno, U tijeku, Izvršeno, Otkazano'
+}
+
+Table visit_request_statuses {
+  id int [pk, increment]
+  name varchar [not null, unique]
+  note: 'Seed: Zaprimljeno, Odobreno, Odbijeno, Održano, Otkazano'
+}
+
+Table activity_types {
+  id int [pk, increment]
+  name varchar [not null, unique]
+  note: 'Seed: Društvena, Kreativna, Tjelovježba, Edukativna, Izlet'
+}
+
+Table rooms {
+  id int [pk, increment]
+  room_number varchar [not null, unique]
+  capacity int [not null]
+  room_status_id int [not null]
+}
+Ref: rooms.room_status_id > room_statuses.id
+
+Table residents {
+  id int [pk, increment]
+  full_name varchar [not null]
+  date_of_birth date
+  resident_status_id int [not null]
+  room_id int [note: 'nullable - trenutna dodjela sobe, ne povijest']
+  admission_date date
+  created_at datetime [not null]
+}
+Ref: residents.resident_status_id > resident_statuses.id
+Ref: residents.room_id > rooms.id
+
+Table staff {
+  id int [pk, increment]
+  full_name varchar [not null]
+  position varchar
+  phone varchar
+  email varchar
+  is_active bool [not null, default: true]
+}
+
+Table family_contacts {
+  id int [pk, increment]
+  resident_id int [not null]
+  full_name varchar [not null]
+  relationship varchar [note: 'npr. kćer, sin, supružnik']
+  phone varchar
+  email varchar
+}
+Ref: family_contacts.resident_id > residents.id
+
+Table app_users {
+  id int [pk, increment]
+  username varchar [not null, unique]
+  password_hash varchar [not null]
+  is_active bool [not null, default: true]
+  staff_id int [unique, note: 'nullable, unique kad je popunjeno']
+  family_contact_id int [unique, note: 'nullable, unique kad je popunjeno']
+  created_at datetime [not null]
+}
+Ref: app_users.staff_id > staff.id
+Ref: app_users.family_contact_id > family_contacts.id
+
+Table app_roles {
+  id int [pk, increment]
+  name varchar [not null, unique]
+  note: 'Admin, Coordinator, Caregiver, FamilyMember'
+}
+
+Table app_user_roles {
+  app_user_id int [not null]
+  app_role_id int [not null]
+
+  indexes {
+    (app_user_id, app_role_id) [pk]
+  }
+}
+Ref: app_user_roles.app_user_id > app_users.id
+Ref: app_user_roles.app_role_id > app_roles.id
+
+Table care_tasks {
+  id int [pk, increment]
+  resident_id int [not null]
+  care_task_type_id int [not null]
+  care_task_status_id int [not null]
+  assigned_staff_id int [note: 'nullable - null = slobodan zadatak']
+  due_date datetime [not null]
+  created_at datetime [not null]
+  completed_at datetime [note: 'nullable, obavezno kad status = Izvršeno']
+  completion_note varchar [note: 'nullable, obavezno kad status = Izvršeno']
+}
+Ref: care_tasks.resident_id > residents.id
+Ref: care_tasks.care_task_type_id > care_task_types.id
+Ref: care_tasks.care_task_status_id > care_task_statuses.id
+Ref: care_tasks.assigned_staff_id > staff.id
+
+Table visit_requests {
+  id int [pk, increment]
+  resident_id int [not null]
+  family_contact_id int [not null]
+  visit_request_status_id int [not null]
+  requested_at datetime [not null, note: 'traženi termin posjeta']
+  decided_by_staff_id int [note: 'nullable dok je status Zaprimljeno']
+  decision_note varchar
+  created_at datetime [not null]
+}
+Ref: visit_requests.resident_id > residents.id
+Ref: visit_requests.family_contact_id > family_contacts.id
+Ref: visit_requests.visit_request_status_id > visit_request_statuses.id
+Ref: visit_requests.decided_by_staff_id > staff.id
+
+Table activities {
+  id int [pk, increment]
+  activity_type_id int [not null]
+  name varchar [not null]
+  description varchar
+  scheduled_at datetime [not null]
+}
+Ref: activities.activity_type_id > activity_types.id
+
+Table activity_participants {
+  activity_id int [not null]
+  resident_id int [not null]
+
+  indexes {
+    (activity_id, resident_id) [pk]
+  }
+}
+Ref: activity_participants.activity_id > activities.id
+Ref: activity_participants.resident_id > residents.id
+
+Table resident_documents {
+  id int [pk, increment]
+  resident_id int [not null]
+  original_file_name varchar [not null]
+  stored_file_name varchar [not null, note: 'sigurno generirano ime na disku']
+  content_type varchar [not null]
+  file_size_bytes bigint [not null]
+  uploaded_at datetime [not null]
+}
+Ref: resident_documents.resident_id > residents.id
