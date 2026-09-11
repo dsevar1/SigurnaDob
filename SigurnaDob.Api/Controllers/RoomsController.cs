@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SigurnaDob.Api.Data;
-using SigurnaDob.Shared.Constants;
+using SigurnaDob.Api.Services;
 using SigurnaDob.Shared.DTOs.Rooms;
 using SigurnaDob.Shared.Models;
 
@@ -14,10 +14,12 @@ namespace SigurnaDob.Api.Controllers;
 public class RoomsController : ControllerBase
 {
     private readonly SigurnaDobDbContext _db;
+    private readonly RoomOccupancyService _occupancy;
 
-    public RoomsController(SigurnaDobDbContext db)
+    public RoomsController(SigurnaDobDbContext db, RoomOccupancyService occupancy)
     {
         _db = db;
+        _occupancy = occupancy;
     }
 
     [HttpGet]
@@ -59,7 +61,7 @@ public class RoomsController : ControllerBase
         };
 
         var rooms = await query.ToListAsync();
-        var occupancyByRoom = await GetOccupancyByRoomAsync();
+        var occupancyByRoom = await _occupancy.GetOccupancyByRoomAsync();
 
         var result = rooms.Select(r => MapToDto(r, occupancyByRoom.GetValueOrDefault(r.Id, 0))).ToList();
         return Ok(result);
@@ -74,7 +76,7 @@ public class RoomsController : ControllerBase
             return NotFound();
         }
 
-        var occupancy = await GetOccupancyForRoomAsync(id);
+        var occupancy = await _occupancy.GetOccupancyAsync(id);
         return Ok(MapToDto(room, occupancy));
     }
 
@@ -141,7 +143,7 @@ public class RoomsController : ControllerBase
             return BadRequest("Soba s tim brojem već postoji.");
         }
 
-        var currentOccupancy = await GetOccupancyForRoomAsync(id);
+        var currentOccupancy = await _occupancy.GetOccupancyAsync(id);
         if (dto.Capacity < currentOccupancy)
         {
             return BadRequest($"Kapacitet ne može biti manji od trenutnog broja dodijeljenih korisnika ({currentOccupancy}).");
@@ -176,25 +178,6 @@ public class RoomsController : ControllerBase
         await _db.SaveChangesAsync();
 
         return NoContent();
-    }
-
-    private async Task<Dictionary<int, int>> GetOccupancyByRoomAsync()
-    {
-        var relevantStatuses = ResidentStatusIds.RacunaSeUPopunjenost;
-
-        return await _db.Residents
-            .Where(r => r.RoomId != null && relevantStatuses.Contains(r.ResidentStatusId))
-            .GroupBy(r => r.RoomId!.Value)
-            .Select(g => new { RoomId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.RoomId, x => x.Count);
-    }
-
-    private async Task<int> GetOccupancyForRoomAsync(int roomId)
-    {
-        var relevantStatuses = ResidentStatusIds.RacunaSeUPopunjenost;
-
-        return await _db.Residents
-            .CountAsync(r => r.RoomId == roomId && relevantStatuses.Contains(r.ResidentStatusId));
     }
 
     private static RoomDto MapToDto(Room room, int occupancy)
