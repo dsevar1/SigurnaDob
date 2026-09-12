@@ -5,4 +5,9 @@
             <MudNavLink Href="rooms" Icon="@Icons.Material.Filled.MeetingRoom">Sobe</MudNavLink>
         </Authorized>
     </AuthorizeView>
+    <AuthorizeView Roles="Admin,Coordinator">
+        <Authorized>
+            <MudNavLink Href="residents" Icon="@Icons.Material.Filled.People">Korisnici doma</MudNavLink>
+        </Authorized>
+    </AuthorizeView>
 </MudNavMenu>

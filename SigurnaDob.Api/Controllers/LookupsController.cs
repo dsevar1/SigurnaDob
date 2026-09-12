@@ -28,4 +28,15 @@ public class LookupsController : ControllerBase
 
         return Ok(statuses);
     }
+
+    [HttpGet("resident-statuses")]
+    public async Task<ActionResult<List<LookupDto>>> GetResidentStatuses()
+    {
+        var statuses = await _db.ResidentStatuses
+            .OrderBy(s => s.Id)
+            .Select(s => new LookupDto { Id = s.Id, Name = s.Name })
+            .ToListAsync();
+
+        return Ok(statuses);
+    }
 }

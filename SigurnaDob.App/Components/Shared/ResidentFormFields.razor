@@ -1,0 +1,38 @@
+<MudTextField T="string" Label="Ime i prezime" @bind-Value="Model.FullName" Required="true"
+              RequiredError="Ime i prezime su obavezni." Class="mb-2" />
+
+<MudDatePicker Label="Datum rođenja" @bind-Date="Model.DateOfBirth" Class="mb-2" />
+
+<MudSelect T="int" Label="Status" @bind-Value="Model.ResidentStatusId" Required="true"
+           RequiredError="Status je obavezan." Class="mb-2">
+    @foreach (var status in ResidentStatuses)
+    {
+        <MudSelectItem T="int" Value="@status.Id">@status.Name</MudSelectItem>
+    }
+</MudSelect>
+
+<MudSelect T="int?" Label="Soba" @bind-Value="Model.RoomId" Clearable="true" Class="mb-2">
+    @foreach (var room in Rooms)
+    {
+        <MudSelectItem T="int?" Value="@((int?)room.Id)" Disabled="@(room.RoomStatusId != RoomStatusIds.UUporabi || room.FreeCapacity <= 0)">
+            @room.RoomNumber — slobodno @room.FreeCapacity/@room.Capacity (@room.RoomStatusName)
+        </MudSelectItem>
+    }
+</MudSelect>
+
+<MudDatePicker Label="Datum prijema" @bind-Date="Model.AdmissionDate" Class="mb-2" />
+
+@code {
+    [Parameter, EditorRequired] public ResidentFormModel Model { get; set; } = null!;
+    [Parameter, EditorRequired] public List<LookupDto> ResidentStatuses { get; set; } = new();
+    [Parameter, EditorRequired] public List<RoomDto> Rooms { get; set; } = new();
+
+    public class ResidentFormModel
+    {
+        public string FullName { get; set; } = string.Empty;
+        public DateTime? DateOfBirth { get; set; }
+        public int ResidentStatusId { get; set; }
+        public int? RoomId { get; set; }
+        public DateTime? AdmissionDate { get; set; }
+    }
+}

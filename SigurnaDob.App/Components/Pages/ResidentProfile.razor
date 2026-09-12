@@ -1,0 +1,89 @@
+@page "/residents/{Id:int}"
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Profil korisnika doma</PageTitle>
+
+<AuthorizeView Roles="Admin,Coordinator">
+    <Authorized>
+        @if (_notFound)
+        {
+            <MudAlert Severity="Severity.Error">Korisnik doma nije pronađen.</MudAlert>
+        }
+        else if (_resident is null)
+        {
+            <MudText>Učitavanje...</MudText>
+        }
+        else
+        {
+            <MudText Typo="Typo.h4" Class="mb-4">@_resident.FullName</MudText>
+
+            <MudPaper Class="pa-4" MaxWidth="600px">
+                <MudSimpleTable Dense="true">
+                    <tbody>
+                        <tr>
+                            <td><strong>Datum rođenja</strong></td>
+                            <td>@(_resident.DateOfBirth?.ToString("dd.MM.yyyy") ?? "—")</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Status</strong></td>
+                            <td>@_resident.ResidentStatusName</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Soba</strong></td>
+                            <td>@(_resident.RoomNumber ?? "—")</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Datum prijema</strong></td>
+                            <td>@(_resident.AdmissionDate?.ToString("dd.MM.yyyy") ?? "—")</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+
+                <div class="d-flex mt-4">
+                    <MudButton Variant="Variant.Outlined" Class="mr-2" OnClick="@(() => Navigation.NavigateTo("/residents"))">Natrag</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => Navigation.NavigateTo($"/residents/{Id}/edit"))">Uredi</MudButton>
+                </div>
+            </MudPaper>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Nemaš ovlasti za pregled profila korisnika doma.</MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private ResidentDto? _resident;
+    private bool _notFound;
+
+    protected override async Task OnInitializedAsync()
+    {
+        HttpResponseMessage response;
+        try
+        {
+            response = await Http.GetAsync($"api/residents/{Id}");
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti podatke. Provjeri je li API pokrenut.", Severity.Error);
+            return;
+        }
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _notFound = true;
+            return;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // 401/403 - <AuthorizeView> u markupu već prikazuje odgovarajuću poruku, ne treba dupli snackbar.
+            return;
+        }
+
+        _resident = await response.Content.ReadFromJsonAsync<ResidentDto>();
+    }
+}

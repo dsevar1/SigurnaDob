@@ -1,0 +1,139 @@
+@page "/residents"
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<PageTitle>Korisnici doma</PageTitle>
+
+<AuthorizeView Roles="Admin,Coordinator">
+    <Authorized>
+        <MudText Typo="Typo.h4" Class="mb-4">Korisnici doma</MudText>
+
+        <MudTable T="ResidentDto" ServerData="ServerReload" @ref="_table" Hover="true" Dense="true" OnRowClick="OnRowClick" RowStyle="cursor:pointer;">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_search" Label="Pretraga (ime)" Immediate="false"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="mr-4" Style="max-width:220px" />
+                <MudSelect T="int?" @bind-Value="_residentStatusId" Label="Status" Clearable="true" Class="mr-4" Style="min-width:200px">
+                    @foreach (var status in _residentStatuses)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)status.Id)">@status.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudSelect T="int?" @bind-Value="_roomId" Label="Soba" Clearable="true" Class="mr-4" Style="min-width:160px">
+                    @foreach (var room in _rooms)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)room.Id)">@room.RoomNumber</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyFiltersAsync" Class="mr-2">Filtriraj</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="ResetFiltersAsync">Reset</MudButton>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Add" OnClick="@(() => Navigation.NavigateTo("/residents/create"))">
+                    Novi korisnik
+                </MudButton>
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh><MudTableSortLabel SortLabel="fullName" T="ResidentDto">Ime i prezime</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortLabel="status" T="ResidentDto">Status</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortLabel="room" T="ResidentDto">Soba</MudTableSortLabel></MudTh>
+                <MudTh>Datum prijema</MudTh>
+                <MudTh>Akcije</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="resident">
+                <MudTd DataLabel="Ime i prezime">@resident.FullName</MudTd>
+                <MudTd DataLabel="Status">@resident.ResidentStatusName</MudTd>
+                <MudTd DataLabel="Soba">@(resident.RoomNumber ?? "—")</MudTd>
+                <MudTd DataLabel="Datum prijema">@(resident.AdmissionDate?.ToString("dd.MM.yyyy") ?? "—")</MudTd>
+                <MudTd DataLabel="Akcije" @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                   OnClick="@(() => NavigateToEdit(resident.Id))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>Nema korisnika koji odgovaraju filterima.</MudText>
+            </NoRecordsContent>
+            <LoadingContent>
+                <MudText>Učitavanje...</MudText>
+            </LoadingContent>
+        </MudTable>
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Nemaš ovlasti za pregled korisnika doma.</MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private MudTable<ResidentDto> _table = null!;
+    private List<LookupDto> _residentStatuses = new();
+    private List<RoomDto> _rooms = new();
+    private string? _search;
+    private int? _residentStatusId;
+    private int? _roomId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _residentStatuses = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/resident-statuses") ?? new();
+            _rooms = await Http.GetFromJsonAsync<List<RoomDto>>("api/rooms") ?? new();
+        }
+        catch (HttpRequestException)
+        {
+            // Šifrarnici se neće učitati ako API nije dostupan - ServerReload će prijaviti istu grešku.
+        }
+    }
+
+    private async Task<TableData<ResidentDto>> ServerReload(TableState state, CancellationToken cancellationToken)
+    {
+        var query = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            query.Add($"search={Uri.EscapeDataString(_search)}");
+        }
+        if (_residentStatusId is not null)
+        {
+            query.Add($"residentStatusId={_residentStatusId}");
+        }
+        if (_roomId is not null)
+        {
+            query.Add($"roomId={_roomId}");
+        }
+        if (!string.IsNullOrEmpty(state.SortLabel) && state.SortDirection != SortDirection.None)
+        {
+            query.Add($"sortBy={state.SortLabel}");
+            query.Add($"sortDescending={(state.SortDirection == SortDirection.Descending ? "true" : "false")}");
+        }
+
+        var url = "api/residents" + (query.Count > 0 ? "?" + string.Join("&", query) : string.Empty);
+
+        try
+        {
+            var residents = await Http.GetFromJsonAsync<List<ResidentDto>>(url, cancellationToken) ?? new();
+            return new TableData<ResidentDto> { Items = residents, TotalItems = residents.Count };
+        }
+        catch (HttpRequestException)
+        {
+            return new TableData<ResidentDto> { Items = Array.Empty<ResidentDto>(), TotalItems = 0 };
+        }
+    }
+
+    private Task ApplyFiltersAsync() => _table.ReloadServerData();
+
+    private Task ResetFiltersAsync()
+    {
+        _search = null;
+        _residentStatusId = null;
+        _roomId = null;
+        return _table.ReloadServerData();
+    }
+
+    private void OnRowClick(TableRowClickEventArgs<ResidentDto> args)
+    {
+        Navigation.NavigateTo($"/residents/{args.Item!.Id}");
+    }
+
+    private void NavigateToEdit(int id)
+    {
+        Navigation.NavigateTo($"/residents/{id}/edit");
+    }
+}
