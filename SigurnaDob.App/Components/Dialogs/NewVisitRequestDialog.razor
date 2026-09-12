@@ -1,0 +1,57 @@
+<MudDialog>
+    <TitleContent>Novi zahtjev za posjet</TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudGrid Class="mb-2">
+                <MudItem xs="6">
+                    <MudDatePicker Label="Datum posjeta" @bind-Date="_requestedAtDate" Required="true"
+                                   RequiredError="Datum posjeta je obavezan." />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudTimePicker Label="Vrijeme posjeta" @bind-Time="_requestedAtTime" Required="true"
+                                   RequiredError="Vrijeme posjeta je obavezno." />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Pošalji zahtjev</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public record NewVisitRequestResult(DateTime RequestedAtUtc);
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private MudForm _form = null!;
+    private DateTime? _requestedAtDate;
+    private TimeSpan? _requestedAtTime;
+
+    protected override void OnInitialized()
+    {
+        _requestedAtDate = DateTime.Now.Date;
+        _requestedAtTime = DateTime.Now.TimeOfDay;
+    }
+
+    private async Task Submit()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        var requestedAtLocal = _requestedAtDate!.Value.Date + _requestedAtTime!.Value;
+
+        // Isti UTC popravak kao CompleteCareTaskDialog: dialog vraća lokalno "zidno" vrijeme
+        // (DateTimeKind.Unspecified), a Api uspoređuje RequestedAt naspram DateTime.UtcNow
+        // (provjera "ne može se odobriti posjet u prošlosti") - mora stići kao UTC.
+        var requestedAtUtc = requestedAtLocal.ToUniversalTime();
+
+        MudDialog.Close(DialogResult.Ok(new NewVisitRequestResult(requestedAtUtc)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

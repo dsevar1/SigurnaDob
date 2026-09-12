@@ -141,6 +141,12 @@
             var tasks = await Http.GetFromJsonAsync<List<CareTaskDto>>(url, cancellationToken) ?? new();
             return new TableData<CareTaskDto> { Items = tasks, TotalItems = tasks.Count };
         }
+        catch (OperationCanceledException)
+        {
+            // MudTable je otkazao ovaj zahtjev jer je noviji (brzo mijenjanje filtera/sortiranja)
+            // preuzeo prioritet - nije stvarna greška, ne prikazivati Snackbar.
+            return new TableData<CareTaskDto> { Items = Array.Empty<CareTaskDto>(), TotalItems = 0 };
+        }
         catch (HttpRequestException)
         {
             return new TableData<CareTaskDto> { Items = Array.Empty<CareTaskDto>(), TotalItems = 0 };

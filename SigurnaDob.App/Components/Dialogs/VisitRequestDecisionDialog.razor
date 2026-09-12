@@ -1,0 +1,26 @@
+<MudDialog>
+    <TitleContent>@Title</TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_decisionNote" Label="Napomena (neobavezno)" Lines="3" Class="mb-2" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Potvrdi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public record VisitRequestDecisionResult(string? DecisionNote);
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    private string? _decisionNote;
+
+    private void Submit()
+    {
+        MudDialog.Close(DialogResult.Ok(new VisitRequestDecisionResult(_decisionNote)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

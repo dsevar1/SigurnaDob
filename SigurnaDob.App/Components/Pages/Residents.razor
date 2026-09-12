@@ -111,6 +111,12 @@
             var residents = await Http.GetFromJsonAsync<List<ResidentDto>>(url, cancellationToken) ?? new();
             return new TableData<ResidentDto> { Items = residents, TotalItems = residents.Count };
         }
+        catch (OperationCanceledException)
+        {
+            // MudTable je otkazao ovaj zahtjev jer je noviji (brzo mijenjanje filtera/sortiranja)
+            // preuzeo prioritet - nije stvarna greška, ne prikazivati Snackbar.
+            return new TableData<ResidentDto> { Items = Array.Empty<ResidentDto>(), TotalItems = 0 };
+        }
         catch (HttpRequestException)
         {
             return new TableData<ResidentDto> { Items = Array.Empty<ResidentDto>(), TotalItems = 0 };

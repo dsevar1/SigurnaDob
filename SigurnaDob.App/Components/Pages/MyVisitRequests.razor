@@ -1,0 +1,106 @@
+@page "/myvisitrequests"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Moji zahtjevi za posjet</PageTitle>
+
+<AuthorizeView Roles="FamilyMember">
+    <Authorized>
+        <MudText Typo="Typo.h4" Class="mb-4">Moji zahtjevi za posjet</MudText>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   Class="mb-4" OnClick="NewRequestAsync">
+            Novi zahtjev za posjet
+        </MudButton>
+
+        @if (_loading)
+        {
+            <MudText>Učitavanje...</MudText>
+        }
+        else if (_requests.Count == 0)
+        {
+            <MudText>Nemaš poslanih zahtjeva za posjet.</MudText>
+        }
+        else
+        {
+            <MudSimpleTable Dense="true" Hover="true">
+                <thead>
+                    <tr>
+                        <th>Traženi termin</th>
+                        <th>Status</th>
+                        <th>Bilješka</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var request in _requests)
+                    {
+                        <tr>
+                            <td>@request.RequestedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                            <td>@request.VisitRequestStatusName</td>
+                            <td>@(request.DecisionNote ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Nemaš ovlasti za pregled ove stranice.</MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<VisitRequestDto> _requests = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRequestsAsync();
+        _loading = false;
+    }
+
+    private async Task LoadRequestsAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/visitrequests/mine");
+            if (response.IsSuccessStatusCode)
+            {
+                _requests = await response.Content.ReadFromJsonAsync<List<VisitRequestDto>>() ?? new();
+            }
+            // 401/403 - <AuthorizeView> u markupu već prikazuje odgovarajuću poruku, ne treba dupli snackbar.
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti zahtjeve za posjet. Provjeri je li API pokrenut.", Severity.Error);
+        }
+    }
+
+    private async Task NewRequestAsync()
+    {
+        var dialog = await DialogService.ShowAsync<NewVisitRequestDialog>("Novi zahtjev za posjet");
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false } && result.Data is NewVisitRequestDialog.NewVisitRequestResult data)
+        {
+            var dto = new VisitRequestCreateDto { RequestedAt = data.RequestedAtUtc };
+            var response = await Http.PostAsJsonAsync("api/visitrequests/mine", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Zahtjev za posjet je poslan.", Severity.Success);
+                await LoadRequestsAsync();
+            }
+            else
+            {
+                await ShowErrorAsync(response, "Greška prilikom slanja zahtjeva.");
+            }
+        }
+    }
+
+    private async Task ShowErrorAsync(HttpResponseMessage response, string fallbackMessage)
+    {
+        var message = await response.Content.ReadAsStringAsync();
+        Snackbar.Add(string.IsNullOrWhiteSpace(message) ? fallbackMessage : message, Severity.Error);
+    }
+}

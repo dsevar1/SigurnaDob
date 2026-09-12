@@ -116,6 +116,12 @@
             var rooms = await Http.GetFromJsonAsync<List<RoomDto>>(url, cancellationToken) ?? new();
             return new TableData<RoomDto> { Items = rooms, TotalItems = rooms.Count };
         }
+        catch (OperationCanceledException)
+        {
+            // MudTable je otkazao ovaj zahtjev jer je noviji (brzo mijenjanje filtera/sortiranja)
+            // preuzeo prioritet - nije stvarna greška, ne prikazivati Snackbar.
+            return new TableData<RoomDto> { Items = Array.Empty<RoomDto>(), TotalItems = 0 };
+        }
         catch (HttpRequestException)
         {
             Snackbar.Add("Ne mogu dohvatiti popis soba. Provjeri je li API pokrenut.", Severity.Error);

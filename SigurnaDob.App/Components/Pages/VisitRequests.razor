@@ -1,0 +1,221 @@
+@page "/visitrequests"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Zahtjevi za posjet</PageTitle>
+
+<AuthorizeView Roles="Admin,Coordinator">
+    <Authorized>
+        <MudText Typo="Typo.h4" Class="mb-4">Zahtjevi za posjet</MudText>
+
+        <MudTable T="VisitRequestDto" ServerData="ServerReload" @ref="_table" Hover="true" Dense="true">
+            <ToolBarContent>
+                <MudSelect T="int?" @bind-Value="_visitRequestStatusId" Label="Status" Clearable="true" Class="mr-4" Style="min-width:200px">
+                    @foreach (var status in _visitRequestStatuses)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)status.Id)">@status.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyFiltersAsync" Class="mr-2">Filtriraj</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="ResetFiltersAsync">Reset</MudButton>
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh><MudTableSortLabel SortLabel="resident" T="VisitRequestDto">Korisnik doma</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortLabel="familycontact" T="VisitRequestDto">Obiteljski kontakt</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortLabel="requestedAt" T="VisitRequestDto">Traženi termin</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortLabel="status" T="VisitRequestDto">Status</MudTableSortLabel></MudTh>
+                <MudTh>Bilješka</MudTh>
+                <MudTh>Akcije</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="visitRequest">
+                <MudTd DataLabel="Korisnik doma">@visitRequest.ResidentFullName</MudTd>
+                <MudTd DataLabel="Obiteljski kontakt">@visitRequest.FamilyContactFullName</MudTd>
+                <MudTd DataLabel="Traženi termin">@visitRequest.RequestedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</MudTd>
+                <MudTd DataLabel="Status">@visitRequest.VisitRequestStatusName</MudTd>
+                <MudTd DataLabel="Bilješka">@(visitRequest.DecisionNote ?? "—")</MudTd>
+                <MudTd DataLabel="Akcije">
+                    @if (visitRequest.VisitRequestStatusId == VisitRequestStatusIds.Zaprimljeno)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small" Class="mr-2"
+                                   OnClick="@(() => ApproveAsync(visitRequest))">
+                            Odobri
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small"
+                                   OnClick="@(() => RejectAsync(visitRequest))">
+                            Odbij
+                        </MudButton>
+                    }
+                    else if (visitRequest.VisitRequestStatusId == VisitRequestStatusIds.Odobreno)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small" Class="mr-2"
+                                   OnClick="@(() => MarkHeldAsync(visitRequest))">
+                            Održano
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small"
+                                   OnClick="@(() => MarkCancelledAsync(visitRequest))">
+                            Otkazano
+                        </MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>Nema zahtjeva za posjet koji odgovaraju filteru.</MudText>
+            </NoRecordsContent>
+            <LoadingContent>
+                <MudText>Učitavanje...</MudText>
+            </LoadingContent>
+        </MudTable>
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Nemaš ovlasti za pregled zahtjeva za posjet.</MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private MudTable<VisitRequestDto> _table = null!;
+    private List<LookupDto> _visitRequestStatuses = new();
+    private int? _visitRequestStatusId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _visitRequestStatuses = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/visit-request-statuses") ?? new();
+        }
+        catch (HttpRequestException)
+        {
+            // Šifrarnik se neće učitati ako API nije dostupan - ServerReload će prijaviti istu grešku.
+        }
+    }
+
+    private async Task<TableData<VisitRequestDto>> ServerReload(TableState state, CancellationToken cancellationToken)
+    {
+        var query = new List<string>();
+
+        if (_visitRequestStatusId is not null)
+        {
+            query.Add($"visitRequestStatusId={_visitRequestStatusId}");
+        }
+        if (!string.IsNullOrEmpty(state.SortLabel) && state.SortDirection != SortDirection.None)
+        {
+            query.Add($"sortBy={state.SortLabel}");
+            query.Add($"sortDescending={(state.SortDirection == SortDirection.Descending ? "true" : "false")}");
+        }
+
+        var url = "api/visitrequests" + (query.Count > 0 ? "?" + string.Join("&", query) : string.Empty);
+
+        try
+        {
+            var requests = await Http.GetFromJsonAsync<List<VisitRequestDto>>(url, cancellationToken) ?? new();
+            return new TableData<VisitRequestDto> { Items = requests, TotalItems = requests.Count };
+        }
+        catch (OperationCanceledException)
+        {
+            // MudTable je otkazao ovaj zahtjev jer je noviji (brzo mijenjanje filtera/sortiranja)
+            // preuzeo prioritet - nije stvarna greška, ne prikazivati Snackbar.
+            return new TableData<VisitRequestDto> { Items = Array.Empty<VisitRequestDto>(), TotalItems = 0 };
+        }
+        catch (HttpRequestException)
+        {
+            return new TableData<VisitRequestDto> { Items = Array.Empty<VisitRequestDto>(), TotalItems = 0 };
+        }
+    }
+
+    private Task ApplyFiltersAsync() => _table.ReloadServerData();
+
+    private Task ResetFiltersAsync()
+    {
+        _visitRequestStatusId = null;
+        return _table.ReloadServerData();
+    }
+
+    private async Task ApproveAsync(VisitRequestDto visitRequest)
+    {
+        var response = await Http.PostAsJsonAsync($"api/visitrequests/{visitRequest.Id}/approve", new VisitRequestDecisionDto());
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Zahtjev za posjet je odobren.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom odobravanja zahtjeva.");
+        }
+    }
+
+    private async Task RejectAsync(VisitRequestDto visitRequest)
+    {
+        var result = await ShowDecisionDialogAsync("Odbij zahtjev za posjet");
+        if (result is null)
+        {
+            return;
+        }
+
+        var dto = new VisitRequestDecisionDto { DecisionNote = result.DecisionNote };
+        var response = await Http.PostAsJsonAsync($"api/visitrequests/{visitRequest.Id}/reject", dto);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Zahtjev za posjet je odbijen.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom odbijanja zahtjeva.");
+        }
+    }
+
+    private async Task MarkHeldAsync(VisitRequestDto visitRequest)
+    {
+        var response = await Http.PostAsJsonAsync($"api/visitrequests/{visitRequest.Id}/mark-held", new VisitRequestDecisionDto());
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Posjet je označen kao održan.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom označavanja posjeta kao održanog.");
+        }
+    }
+
+    private async Task MarkCancelledAsync(VisitRequestDto visitRequest)
+    {
+        var result = await ShowDecisionDialogAsync("Otkaži posjet");
+        if (result is null)
+        {
+            return;
+        }
+
+        var dto = new VisitRequestDecisionDto { DecisionNote = result.DecisionNote };
+        var response = await Http.PostAsJsonAsync($"api/visitrequests/{visitRequest.Id}/mark-cancelled", dto);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Posjet je otkazan.", Severity.Success);
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom otkazivanja posjeta.");
+        }
+    }
+
+    private async Task<VisitRequestDecisionDialog.VisitRequestDecisionResult?> ShowDecisionDialogAsync(string title)
+    {
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(VisitRequestDecisionDialog.Title), title);
+
+        var dialog = await DialogService.ShowAsync<VisitRequestDecisionDialog>(title, parameters);
+        var result = await dialog.Result;
+
+        return result is { Canceled: false } && result.Data is VisitRequestDecisionDialog.VisitRequestDecisionResult data
+            ? data
+            : null;
+    }
+
+    private async Task ShowErrorAsync(HttpResponseMessage response, string fallbackMessage)
+    {
+        var message = await response.Content.ReadAsStringAsync();
+        Snackbar.Add(string.IsNullOrWhiteSpace(message) ? fallbackMessage : message, Severity.Error);
+    }
+}
