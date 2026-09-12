@@ -1,0 +1,81 @@
+<MudDialog>
+    <TitleContent>@(ExistingActivity is null ? "Nova aktivnost" : "Uredi aktivnost")</TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudTextField @bind-Value="_name" Label="Naziv" Required="true"
+                          RequiredError="Naziv je obavezan." Class="mb-2" />
+            <MudTextField @bind-Value="_description" Label="Opis" Lines="3" Class="mb-2" />
+            <MudSelect T="int" @bind-Value="_activityTypeId" Label="Tip" Required="true"
+                       RequiredError="Tip je obavezan." Class="mb-2">
+                @foreach (var type in ActivityTypes)
+                {
+                    <MudSelectItem T="int" Value="@type.Id">@type.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudDatePicker Label="Datum termina" @bind-Date="_scheduledAtDate" Required="true"
+                                   RequiredError="Datum termina je obavezan." />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudTimePicker Label="Vrijeme termina" @bind-Time="_scheduledAtTime" Required="true"
+                                   RequiredError="Vrijeme termina je obavezno." />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Spremi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public record ActivityFormResult(string Name, string? Description, int ActivityTypeId, DateTime ScheduledAt);
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public ActivityDto? ExistingActivity { get; set; }
+    [Parameter] public List<LookupDto> ActivityTypes { get; set; } = new();
+
+    private MudForm _form = null!;
+    private string _name = string.Empty;
+    private string? _description;
+    private int _activityTypeId;
+    private DateTime? _scheduledAtDate;
+    private TimeSpan? _scheduledAtTime;
+
+    protected override void OnInitialized()
+    {
+        if (ExistingActivity is { } activity)
+        {
+            _name = activity.Name;
+            _description = activity.Description;
+            _activityTypeId = activity.ActivityTypeId;
+            _scheduledAtDate = activity.ScheduledAt.Date;
+            _scheduledAtTime = activity.ScheduledAt.TimeOfDay;
+        }
+        else
+        {
+            if (ActivityTypes.Count > 0)
+            {
+                _activityTypeId = ActivityTypes[0].Id;
+            }
+            _scheduledAtDate = DateTime.Today;
+            _scheduledAtTime = DateTime.Now.TimeOfDay;
+        }
+    }
+
+    private async Task Submit()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        var scheduledAt = _scheduledAtDate!.Value.Date + _scheduledAtTime!.Value;
+        MudDialog.Close(DialogResult.Ok(new ActivityFormResult(_name, _description, _activityTypeId, scheduledAt)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

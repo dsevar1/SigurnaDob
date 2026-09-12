@@ -1,0 +1,200 @@
+@page "/activities"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Aktivnosti</PageTitle>
+
+<AuthorizeView Roles="Admin,Coordinator">
+    <Authorized>
+        <MudText Typo="Typo.h4" Class="mb-4">Aktivnosti</MudText>
+
+        <MudTable T="ActivityDto" ServerData="ServerReload" @ref="_table" Hover="true" Dense="true">
+            <ToolBarContent>
+                <MudSelect T="int?" @bind-Value="_activityTypeId" Label="Tip" Clearable="true" Class="mr-4" Style="min-width:200px">
+                    @foreach (var type in _activityTypes)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)type.Id)">@type.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyFiltersAsync" Class="mr-2">Filtriraj</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="ResetFiltersAsync">Reset</MudButton>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenCreateDialogAsync">
+                    Nova aktivnost
+                </MudButton>
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh><MudTableSortLabel SortLabel="name" T="ActivityDto">Naziv</MudTableSortLabel></MudTh>
+                <MudTh>Tip</MudTh>
+                <MudTh><MudTableSortLabel SortLabel="scheduledAt" T="ActivityDto">Termin</MudTableSortLabel></MudTh>
+                <MudTh>Broj sudionika</MudTh>
+                <MudTh>Akcije</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="activity">
+                <MudTd DataLabel="Naziv">@activity.Name</MudTd>
+                <MudTd DataLabel="Tip">@activity.ActivityTypeName</MudTd>
+                <MudTd DataLabel="Termin">@activity.ScheduledAt.ToString("dd.MM.yyyy HH:mm")</MudTd>
+                <MudTd DataLabel="Broj sudionika">@activity.ParticipantCount</MudTd>
+                <MudTd DataLabel="Akcije">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                   OnClick="@(() => OpenEditDialogAsync(activity))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Group" Size="Size.Small"
+                                   OnClick="@(() => OpenParticipantsDialogAsync(activity))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>Nema aktivnosti koje odgovaraju filteru.</MudText>
+            </NoRecordsContent>
+            <LoadingContent>
+                <MudText>Učitavanje...</MudText>
+            </LoadingContent>
+        </MudTable>
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Nemaš ovlasti za pregled aktivnosti.</MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private MudTable<ActivityDto> _table = null!;
+    private List<LookupDto> _activityTypes = new();
+    private int? _activityTypeId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _activityTypes = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/activity-types") ?? new();
+        }
+        catch (HttpRequestException)
+        {
+            // Šifrarnik se neće učitati ako API nije dostupan - ServerReload će prijaviti istu grešku.
+        }
+    }
+
+    private async Task<TableData<ActivityDto>> ServerReload(TableState state, CancellationToken cancellationToken)
+    {
+        var query = new List<string>();
+
+        if (_activityTypeId is not null)
+        {
+            query.Add($"activityTypeId={_activityTypeId}");
+        }
+        if (!string.IsNullOrEmpty(state.SortLabel) && state.SortDirection != SortDirection.None)
+        {
+            query.Add($"sortBy={state.SortLabel}");
+            query.Add($"sortDescending={(state.SortDirection == SortDirection.Descending ? "true" : "false")}");
+        }
+
+        var url = "api/activities" + (query.Count > 0 ? "?" + string.Join("&", query) : string.Empty);
+
+        try
+        {
+            var activities = await Http.GetFromJsonAsync<List<ActivityDto>>(url, cancellationToken) ?? new();
+            return new TableData<ActivityDto> { Items = activities, TotalItems = activities.Count };
+        }
+        catch (OperationCanceledException)
+        {
+            // MudTable je otkazao ovaj zahtjev jer je noviji (brzo mijenjanje filtera/sortiranja)
+            // preuzeo prioritet - nije stvarna greška, ne prikazivati Snackbar.
+            return new TableData<ActivityDto> { Items = Array.Empty<ActivityDto>(), TotalItems = 0 };
+        }
+        catch (HttpRequestException)
+        {
+            return new TableData<ActivityDto> { Items = Array.Empty<ActivityDto>(), TotalItems = 0 };
+        }
+    }
+
+    private Task ApplyFiltersAsync() => _table.ReloadServerData();
+
+    private Task ResetFiltersAsync()
+    {
+        _activityTypeId = null;
+        return _table.ReloadServerData();
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(ActivityFormDialog.ExistingActivity), null);
+        parameters.Add(nameof(ActivityFormDialog.ActivityTypes), _activityTypes);
+
+        var dialog = await DialogService.ShowAsync<ActivityFormDialog>("Nova aktivnost", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false } && result.Data is ActivityFormDialog.ActivityFormResult data)
+        {
+            var dto = new ActivityCreateDto
+            {
+                Name = data.Name,
+                Description = data.Description,
+                ActivityTypeId = data.ActivityTypeId,
+                ScheduledAt = data.ScheduledAt
+            };
+
+            var response = await Http.PostAsJsonAsync("api/activities", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Aktivnost je kreirana.", Severity.Success);
+                await _table.ReloadServerData();
+            }
+            else
+            {
+                await ShowErrorAsync(response, "Greška prilikom kreiranja aktivnosti.");
+            }
+        }
+    }
+
+    private async Task OpenEditDialogAsync(ActivityDto activity)
+    {
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(ActivityFormDialog.ExistingActivity), activity);
+        parameters.Add(nameof(ActivityFormDialog.ActivityTypes), _activityTypes);
+
+        var dialog = await DialogService.ShowAsync<ActivityFormDialog>("Uredi aktivnost", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false } && result.Data is ActivityFormDialog.ActivityFormResult data)
+        {
+            var dto = new ActivityUpdateDto
+            {
+                Name = data.Name,
+                Description = data.Description,
+                ActivityTypeId = data.ActivityTypeId,
+                ScheduledAt = data.ScheduledAt
+            };
+
+            var response = await Http.PutAsJsonAsync($"api/activities/{activity.Id}", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Aktivnost je ažurirana.", Severity.Success);
+                await _table.ReloadServerData();
+            }
+            else
+            {
+                await ShowErrorAsync(response, "Greška prilikom ažuriranja aktivnosti.");
+            }
+        }
+    }
+
+    private async Task OpenParticipantsDialogAsync(ActivityDto activity)
+    {
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(ActivityParticipantsDialog.ActivityId), activity.Id);
+        parameters.Add(nameof(ActivityParticipantsDialog.ActivityName), activity.Name);
+
+        var dialog = await DialogService.ShowAsync<ActivityParticipantsDialog>($"Sudionici — {activity.Name}", parameters);
+        await dialog.Result;
+
+        // Broj sudionika se mogao promijeniti dok je dialog bio otvoren - osvježi tablicu bez obzira na to kako je zatvoren.
+        await _table.ReloadServerData();
+    }
+
+    private async Task ShowErrorAsync(HttpResponseMessage response, string fallbackMessage)
+    {
+        var message = await response.Content.ReadAsStringAsync();
+        Snackbar.Add(string.IsNullOrWhiteSpace(message) ? fallbackMessage : message, Severity.Error);
+    }
+}

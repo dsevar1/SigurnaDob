@@ -1,0 +1,151 @@
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>Sudionici — @ActivityName</TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudText>Učitavanje...</MudText>
+        }
+        else
+        {
+            @if (_participants.Count == 0)
+            {
+                <MudText Class="mb-4">Nema prijavljenih sudionika.</MudText>
+            }
+            else
+            {
+                <MudSimpleTable Dense="true" Class="mb-4">
+                    <thead>
+                        <tr>
+                            <th>Korisnik doma</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var participant in _participants)
+                        {
+                            <tr>
+                                <td>@participant.ResidentFullName</td>
+                                <td>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                   OnClick="@(() => RemoveParticipantAsync(participant))" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+
+            @if (_availableResidents.Count == 0)
+            {
+                <MudText Typo="Typo.body2">Svi korisnici doma već sudjeluju u ovoj aktivnosti.</MudText>
+            }
+            else
+            {
+                <div class="d-flex align-center">
+                    <MudSelect T="int?" @bind-Value="_selectedResidentId" Label="Dodaj korisnika doma" Class="mr-2" Style="min-width:220px">
+                        @foreach (var resident in _availableResidents)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)resident.Id)">@resident.FullName</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_selectedResidentId is null"
+                               OnClick="AddParticipantAsync">
+                        Dodaj
+                    </MudButton>
+                </div>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Zatvori</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter, EditorRequired] public int ActivityId { get; set; }
+    [Parameter, EditorRequired] public string ActivityName { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private List<ActivityParticipantDto> _participants = new();
+    private List<ResidentDto> _allResidents = new();
+    private List<ResidentDto> _availableResidents = new();
+    private int? _selectedResidentId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _allResidents = await Http.GetFromJsonAsync<List<ResidentDto>>("api/residents") ?? new();
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti popis korisnika doma. Provjeri je li API pokrenut.", Severity.Error);
+        }
+
+        await LoadParticipantsAsync();
+        _loading = false;
+    }
+
+    private async Task LoadParticipantsAsync()
+    {
+        try
+        {
+            var activity = await Http.GetFromJsonAsync<ActivityDto>($"api/activities/{ActivityId}");
+            _participants = activity?.Participants ?? new();
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti sudionike. Provjeri je li API pokrenut.", Severity.Error);
+        }
+
+        var participantIds = _participants.Select(p => p.ResidentId).ToHashSet();
+        _availableResidents = _allResidents.Where(r => !participantIds.Contains(r.Id)).ToList();
+        _selectedResidentId = null;
+    }
+
+    private async Task AddParticipantAsync()
+    {
+        if (_selectedResidentId is null)
+        {
+            return;
+        }
+
+        var dto = new ActivityAddParticipantDto { ResidentId = _selectedResidentId.Value };
+        var response = await Http.PostAsJsonAsync($"api/activities/{ActivityId}/participants", dto);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Sudionik je dodan.", Severity.Success);
+            await LoadParticipantsAsync();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom dodavanja sudionika.");
+        }
+    }
+
+    private async Task RemoveParticipantAsync(ActivityParticipantDto participant)
+    {
+        var response = await Http.DeleteAsync($"api/activities/{ActivityId}/participants/{participant.ResidentId}");
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Sudionik je uklonjen.", Severity.Success);
+            await LoadParticipantsAsync();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom uklanjanja sudionika.");
+        }
+    }
+
+    private async Task ShowErrorAsync(HttpResponseMessage response, string fallbackMessage)
+    {
+        var message = await response.Content.ReadAsStringAsync();
+        Snackbar.Add(string.IsNullOrWhiteSpace(message) ? fallbackMessage : message, Severity.Error);
+    }
+
+    private void Close() => MudDialog.Close(DialogResult.Ok(true));
+}

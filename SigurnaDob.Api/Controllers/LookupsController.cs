@@ -73,6 +73,17 @@ public class LookupsController : ControllerBase
         return Ok(statuses);
     }
 
+    [HttpGet("activity-types")]
+    public async Task<ActionResult<List<LookupDto>>> GetActivityTypes()
+    {
+        var types = await _db.ActivityTypes
+            .OrderBy(t => t.Id)
+            .Select(t => new LookupDto { Id = t.Id, Name = t.Name })
+            .ToListAsync();
+
+        return Ok(types);
+    }
+
     [HttpGet("staff")]
     public async Task<ActionResult<List<LookupDto>>> GetStaff()
     {
