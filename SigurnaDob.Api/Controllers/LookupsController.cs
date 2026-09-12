@@ -39,4 +39,38 @@ public class LookupsController : ControllerBase
 
         return Ok(statuses);
     }
+
+    [HttpGet("care-task-statuses")]
+    public async Task<ActionResult<List<LookupDto>>> GetCareTaskStatuses()
+    {
+        var statuses = await _db.CareTaskStatuses
+            .OrderBy(s => s.Id)
+            .Select(s => new LookupDto { Id = s.Id, Name = s.Name })
+            .ToListAsync();
+
+        return Ok(statuses);
+    }
+
+    [HttpGet("care-task-types")]
+    public async Task<ActionResult<List<LookupDto>>> GetCareTaskTypes()
+    {
+        var types = await _db.CareTaskTypes
+            .OrderBy(t => t.Id)
+            .Select(t => new LookupDto { Id = t.Id, Name = t.Name })
+            .ToListAsync();
+
+        return Ok(types);
+    }
+
+    [HttpGet("staff")]
+    public async Task<ActionResult<List<LookupDto>>> GetStaff()
+    {
+        var staff = await _db.Staff
+            .Where(s => s.IsActive)
+            .OrderBy(s => s.FullName)
+            .Select(s => new LookupDto { Id = s.Id, Name = s.FullName })
+            .ToListAsync();
+
+        return Ok(staff);
+    }
 }

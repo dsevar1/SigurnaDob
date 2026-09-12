@@ -1,0 +1,148 @@
+@page "/mycaretasks"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Moji zadaci</PageTitle>
+
+<AuthorizeView Roles="Caregiver">
+    <Authorized>
+        <MudText Typo="Typo.h4" Class="mb-4">Moji zadaci</MudText>
+
+        @if (_loading)
+        {
+            <MudText>Učitavanje...</MudText>
+        }
+        else if (_tasks.Count == 0)
+        {
+            <MudText>Nemaš dodijeljenih zadataka.</MudText>
+        }
+        else
+        {
+            <MudSimpleTable Dense="true" Hover="true">
+                <thead>
+                    <tr>
+                        <th>Korisnik doma</th>
+                        <th>Tip</th>
+                        <th>Status</th>
+                        <th>Rok</th>
+                        <th>Bilješka</th>
+                        <th>Akcije</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var task in _tasks)
+                    {
+                        <tr>
+                            <td>@task.ResidentFullName</td>
+                            <td>@task.CareTaskTypeName</td>
+                            <td>@task.CareTaskStatusName</td>
+                            <td>@task.DueDate.ToString("dd.MM.yyyy HH:mm")</td>
+                            <td>@(task.CompletionNote ?? "—")</td>
+                            <td>
+                                @if (task.CareTaskStatusId == CareTaskStatusIds.Dodijeljeno)
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                               OnClick="@(() => StartAsync(task))">
+                                        Započni
+                                    </MudButton>
+                                }
+                                else if (task.CareTaskStatusId == CareTaskStatusIds.UTijeku)
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                               OnClick="@(() => CompleteAsync(task))">
+                                        Završi
+                                    </MudButton>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Nemaš ovlasti za pregled ove stranice.</MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<CareTaskDto> _tasks = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTasksAsync();
+        _loading = false;
+    }
+
+    private async Task LoadTasksAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/caretasks/mine");
+            if (response.IsSuccessStatusCode)
+            {
+                _tasks = await response.Content.ReadFromJsonAsync<List<CareTaskDto>>() ?? new();
+            }
+            // 401/403 - <AuthorizeView> u markupu već prikazuje odgovarajuću poruku, ne treba dupli snackbar.
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti zadatke. Provjeri je li API pokrenut.", Severity.Error);
+        }
+    }
+
+    private async Task StartAsync(CareTaskDto task)
+    {
+        var response = await Http.PostAsync($"api/caretasks/{task.Id}/start", null);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Zadatak je započet.", Severity.Success);
+            await LoadTasksAsync();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom pokretanja zadatka.");
+        }
+    }
+
+    private async Task CompleteAsync(CareTaskDto task)
+    {
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(CompleteCareTaskDialog.CareTaskItem), task);
+
+        var dialog = await DialogService.ShowAsync<CompleteCareTaskDialog>("Završi zadatak", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false } && result.Data is CompleteCareTaskDialog.CompleteCareTaskResult data)
+        {
+            var dto = new CareTaskCompleteDto
+            {
+                // Dialog vraća "zidni sat" u lokalnom vremenu servera (DateTimeKind.Unspecified).
+                // Api validira CompletedAt naspram DateTime.UtcNow, pa MORA stići kao UTC -
+                // bez ove konverzije, svaka lokalna zona ispred UTC-a (npr. UTC+2) čini "sada"
+                // trajno "u budućnosti" iz perspektive servera.
+                CompletedAt = data.CompletedAt.ToUniversalTime(),
+                CompletionNote = data.CompletionNote
+            };
+
+            var response = await Http.PostAsJsonAsync($"api/caretasks/{task.Id}/complete", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Zadatak je završen.", Severity.Success);
+                await LoadTasksAsync();
+            }
+            else
+            {
+                await ShowErrorAsync(response, "Greška prilikom završavanja zadatka.");
+            }
+        }
+    }
+
+    private async Task ShowErrorAsync(HttpResponseMessage response, string fallbackMessage)
+    {
+        var message = await response.Content.ReadAsStringAsync();
+        Snackbar.Add(string.IsNullOrWhiteSpace(message) ? fallbackMessage : message, Severity.Error);
+    }
+}

@@ -1,0 +1,56 @@
+<MudDialog>
+    <TitleContent>Završi zadatak</TitleContent>
+    <DialogContent>
+        <MudText Class="mb-4">@CareTaskItem.ResidentFullName — @CareTaskItem.CareTaskTypeName</MudText>
+        <MudForm @ref="_form">
+            <MudGrid Class="mb-2">
+                <MudItem xs="6">
+                    <MudDatePicker Label="Datum završetka" @bind-Date="_completedAtDate" Required="true"
+                                   RequiredError="Datum završetka je obavezan." />
+                </MudItem>
+                <MudItem xs="6">
+                    <MudTimePicker Label="Vrijeme završetka" @bind-Time="_completedAtTime" Required="true"
+                                   RequiredError="Vrijeme završetka je obavezno." />
+                </MudItem>
+            </MudGrid>
+            <MudTextField @bind-Value="_completionNote" Label="Bilješka" Lines="3" Required="true"
+                          RequiredError="Bilješka je obavezna." Class="mb-2" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Završi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public record CompleteCareTaskResult(DateTime CompletedAt, string CompletionNote);
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter, EditorRequired] public CareTaskDto CareTaskItem { get; set; } = null!;
+
+    private MudForm _form = null!;
+    private DateTime? _completedAtDate;
+    private TimeSpan? _completedAtTime;
+    private string _completionNote = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        _completedAtDate = DateTime.Now.Date;
+        _completedAtTime = DateTime.Now.TimeOfDay;
+    }
+
+    private async Task Submit()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        var completedAt = _completedAtDate!.Value.Date + _completedAtTime!.Value;
+        MudDialog.Close(DialogResult.Ok(new CompleteCareTaskResult(completedAt, _completionNote)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

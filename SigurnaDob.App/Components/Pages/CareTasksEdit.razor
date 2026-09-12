@@ -1,0 +1,148 @@
+@page "/caretasks/{Id:int}/edit"
+@using SigurnaDob.Shared.DTOs.Residents
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Uredi zadatak skrbi</PageTitle>
+
+<AuthorizeView Roles="Admin,Coordinator">
+    <Authorized>
+        <MudText Typo="Typo.h4" Class="mb-4">Uredi zadatak skrbi</MudText>
+
+        @if (_notFound)
+        {
+            <MudAlert Severity="Severity.Error">Zadatak skrbi nije pronađen.</MudAlert>
+        }
+        else if (_loading)
+        {
+            <MudText>Učitavanje...</MudText>
+        }
+        else
+        {
+            <MudPaper Class="pa-4" MaxWidth="600px">
+                <MudForm @ref="_form">
+                    <CareTaskFormFields Model="_model" Residents="_residents" CareTaskTypes="_careTaskTypes"
+                                         CareTaskStatuses="_careTaskStatuses" Staff="_staff" />
+                </MudForm>
+
+                @if (!string.IsNullOrEmpty(_errorMessage))
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-2">@_errorMessage</MudAlert>
+                }
+
+                <div class="d-flex mt-4">
+                    <MudButton Variant="Variant.Outlined" Class="mr-2" OnClick="@(() => Navigation.NavigateTo("/caretasks"))">Odustani</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAsync" Disabled="_isSaving">
+                        @(_isSaving ? "Spremanje..." : "Spremi")
+                    </MudButton>
+                </div>
+            </MudPaper>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Nemaš ovlasti za uređivanje zadataka skrbi.</MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private MudForm _form = null!;
+    private readonly CareTaskFormFields.CareTaskFormModel _model = new();
+    private List<ResidentDto> _residents = new();
+    private List<LookupDto> _careTaskTypes = new();
+    private List<LookupDto> _careTaskStatuses = new();
+    private List<LookupDto> _staff = new();
+    private string? _errorMessage;
+    private bool _isSaving;
+    private bool _loading = true;
+    private bool _notFound;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _residents = await Http.GetFromJsonAsync<List<ResidentDto>>("api/residents") ?? new();
+            _careTaskTypes = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/care-task-types") ?? new();
+            _careTaskStatuses = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/care-task-statuses") ?? new();
+            _staff = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/staff") ?? new();
+
+            var response = await Http.GetAsync($"api/caretasks/{Id}");
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _notFound = true;
+                return;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // 401/403 - <AuthorizeView> u markupu već prikazuje odgovarajuću poruku, ne treba dupli snackbar.
+                return;
+            }
+
+            var task = await response.Content.ReadFromJsonAsync<CareTaskDto>();
+            if (task is not null)
+            {
+                _model.ResidentId = task.ResidentId;
+                _model.CareTaskTypeId = task.CareTaskTypeId;
+                _model.CareTaskStatusId = task.CareTaskStatusId;
+                _model.AssignedStaffId = task.AssignedStaffId;
+                _model.DueDateDate = task.DueDate.Date;
+                _model.DueDateTime = task.DueDate.TimeOfDay;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti podatke. Provjeri je li API pokrenut.", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _errorMessage = null;
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var dueDate = _model.DueDateDate!.Value.Date + _model.DueDateTime!.Value;
+
+            var dto = new CareTaskUpdateDto
+            {
+                ResidentId = _model.ResidentId,
+                CareTaskTypeId = _model.CareTaskTypeId,
+                CareTaskStatusId = _model.CareTaskStatusId,
+                DueDate = dueDate,
+                AssignedStaffId = _model.AssignedStaffId
+            };
+
+            var response = await Http.PutAsJsonAsync($"api/caretasks/{Id}", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Zadatak skrbi je ažuriran.", Severity.Success);
+                Navigation.NavigateTo("/caretasks");
+            }
+            else
+            {
+                _errorMessage = await response.Content.ReadAsStringAsync();
+                if (string.IsNullOrWhiteSpace(_errorMessage))
+                {
+                    _errorMessage = "Greška prilikom ažuriranja zadatka skrbi.";
+                }
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

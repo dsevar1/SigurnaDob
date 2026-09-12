@@ -8,6 +8,12 @@
     <AuthorizeView Roles="Admin,Coordinator">
         <Authorized>
             <MudNavLink Href="residents" Icon="@Icons.Material.Filled.People">Korisnici doma</MudNavLink>
+            <MudNavLink Href="caretasks" Icon="@Icons.Material.Filled.Assignment">Zadaci skrbi</MudNavLink>
+        </Authorized>
+    </AuthorizeView>
+    <AuthorizeView Roles="Caregiver">
+        <Authorized>
+            <MudNavLink Href="mycaretasks" Icon="@Icons.Material.Filled.AssignmentInd">Moji zadaci</MudNavLink>
         </Authorized>
     </AuthorizeView>
 </MudNavMenu>

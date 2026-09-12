@@ -1,0 +1,61 @@
+@using SigurnaDob.Shared.DTOs.Residents
+
+<MudSelect T="int" Label="Korisnik doma" @bind-Value="Model.ResidentId" Required="true"
+           RequiredError="Korisnik doma je obavezan." Class="mb-2">
+    @foreach (var resident in Residents)
+    {
+        <MudSelectItem T="int" Value="@resident.Id">@resident.FullName</MudSelectItem>
+    }
+</MudSelect>
+
+<MudSelect T="int" Label="Tip zadatka" @bind-Value="Model.CareTaskTypeId" Required="true"
+           RequiredError="Tip zadatka je obavezan." Class="mb-2">
+    @foreach (var type in CareTaskTypes)
+    {
+        <MudSelectItem T="int" Value="@type.Id">@type.Name</MudSelectItem>
+    }
+</MudSelect>
+
+<MudSelect T="int" Label="Status" @bind-Value="Model.CareTaskStatusId" Required="true"
+           RequiredError="Status je obavezan." Class="mb-2">
+    @foreach (var status in CareTaskStatuses)
+    {
+        <MudSelectItem T="int" Value="@status.Id">@status.Name</MudSelectItem>
+    }
+</MudSelect>
+
+<MudSelect T="int?" Label="Njegovatelj" @bind-Value="Model.AssignedStaffId" Clearable="true" Class="mb-2">
+    @foreach (var staff in Staff)
+    {
+        <MudSelectItem T="int?" Value="@((int?)staff.Id)">@staff.Name</MudSelectItem>
+    }
+</MudSelect>
+
+<MudGrid Class="mb-2">
+    <MudItem xs="6">
+        <MudDatePicker Label="Rok - datum" @bind-Date="Model.DueDateDate" Required="true"
+                       RequiredError="Datum roka je obavezan." />
+    </MudItem>
+    <MudItem xs="6">
+        <MudTimePicker Label="Rok - vrijeme" @bind-Time="Model.DueDateTime" Required="true"
+                       RequiredError="Vrijeme roka je obavezno." />
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter, EditorRequired] public CareTaskFormModel Model { get; set; } = null!;
+    [Parameter, EditorRequired] public List<ResidentDto> Residents { get; set; } = new();
+    [Parameter, EditorRequired] public List<LookupDto> CareTaskTypes { get; set; } = new();
+    [Parameter, EditorRequired] public List<LookupDto> CareTaskStatuses { get; set; } = new();
+    [Parameter, EditorRequired] public List<LookupDto> Staff { get; set; } = new();
+
+    public class CareTaskFormModel
+    {
+        public int ResidentId { get; set; }
+        public int CareTaskTypeId { get; set; }
+        public int CareTaskStatusId { get; set; }
+        public int? AssignedStaffId { get; set; }
+        public DateTime? DueDateDate { get; set; }
+        public TimeSpan? DueDateTime { get; set; }
+    }
+}

@@ -1,0 +1,172 @@
+@page "/caretasks"
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<PageTitle>Zadaci skrbi</PageTitle>
+
+<AuthorizeView Roles="Admin,Coordinator">
+    <Authorized>
+        <MudText Typo="Typo.h4" Class="mb-4">Zadaci skrbi</MudText>
+
+        <MudTable T="CareTaskDto" ServerData="ServerReload" @ref="_table" Hover="true" Dense="true" OnRowClick="OnRowClick" RowStyle="cursor:pointer;">
+            <ToolBarContent>
+                <MudTextField @bind-Value="_search" Label="Pretraga (korisnik doma)" Immediate="false"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="mr-4" Style="max-width:220px" />
+                <MudSelect T="int?" @bind-Value="_careTaskStatusId" Label="Status" Clearable="true" Class="mr-4" Style="min-width:180px">
+                    @foreach (var status in _careTaskStatuses)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)status.Id)">@status.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudSelect T="int?" @bind-Value="_careTaskTypeId" Label="Tip" Clearable="true" Class="mr-4" Style="min-width:180px">
+                    @foreach (var type in _careTaskTypes)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)type.Id)">@type.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudSelect T="int?" @bind-Value="_assignedStaffId" Label="Njegovatelj" Clearable="true" Class="mr-4" Style="min-width:180px">
+                    @foreach (var staff in _staff)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)staff.Id)">@staff.Name</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudDatePicker @bind-Date="_dueDateFrom" Label="Rok od" Clearable="true" Class="mr-4" Style="max-width:160px" />
+                <MudDatePicker @bind-Date="_dueDateTo" Label="Rok do" Clearable="true" Class="mr-4" Style="max-width:160px" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyFiltersAsync" Class="mr-2">Filtriraj</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="ResetFiltersAsync">Reset</MudButton>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="@(() => Navigation.NavigateTo("/caretasks/create"))">
+                    Novi zadatak
+                </MudButton>
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh><MudTableSortLabel SortLabel="resident" T="CareTaskDto">Korisnik doma</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortLabel="type" T="CareTaskDto">Tip</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortLabel="status" T="CareTaskDto">Status</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortLabel="staff" T="CareTaskDto">Njegovatelj</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortLabel="dueDate" T="CareTaskDto">Rok</MudTableSortLabel></MudTh>
+                <MudTh>Akcije</MudTh>
+            </HeaderContent>
+            <RowTemplate Context="task">
+                <MudTd DataLabel="Korisnik doma">@task.ResidentFullName</MudTd>
+                <MudTd DataLabel="Tip">@task.CareTaskTypeName</MudTd>
+                <MudTd DataLabel="Status">@task.CareTaskStatusName</MudTd>
+                <MudTd DataLabel="Njegovatelj">@(task.AssignedStaffFullName ?? "—")</MudTd>
+                <MudTd DataLabel="Rok">@task.DueDate.ToString("dd.MM.yyyy HH:mm")</MudTd>
+                <MudTd DataLabel="Akcije" @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                   OnClick="@(() => NavigateToEdit(task.Id))" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>Nema zadataka koji odgovaraju filterima.</MudText>
+            </NoRecordsContent>
+            <LoadingContent>
+                <MudText>Učitavanje...</MudText>
+            </LoadingContent>
+        </MudTable>
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Nemaš ovlasti za pregled zadataka skrbi.</MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private MudTable<CareTaskDto> _table = null!;
+    private List<LookupDto> _careTaskStatuses = new();
+    private List<LookupDto> _careTaskTypes = new();
+    private List<LookupDto> _staff = new();
+    private string? _search;
+    private int? _careTaskStatusId;
+    private int? _careTaskTypeId;
+    private int? _assignedStaffId;
+    private DateTime? _dueDateFrom;
+    private DateTime? _dueDateTo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _careTaskStatuses = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/care-task-statuses") ?? new();
+            _careTaskTypes = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/care-task-types") ?? new();
+            _staff = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/staff") ?? new();
+        }
+        catch (HttpRequestException)
+        {
+            // Šifrarnici se neće učitati ako API nije dostupan - ServerReload će prijaviti istu grešku.
+        }
+    }
+
+    private async Task<TableData<CareTaskDto>> ServerReload(TableState state, CancellationToken cancellationToken)
+    {
+        var query = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            query.Add($"search={Uri.EscapeDataString(_search)}");
+        }
+        if (_careTaskStatusId is not null)
+        {
+            query.Add($"careTaskStatusId={_careTaskStatusId}");
+        }
+        if (_careTaskTypeId is not null)
+        {
+            query.Add($"careTaskTypeId={_careTaskTypeId}");
+        }
+        if (_assignedStaffId is not null)
+        {
+            query.Add($"assignedStaffId={_assignedStaffId}");
+        }
+        if (_dueDateFrom is not null)
+        {
+            query.Add($"dueDateFrom={Uri.EscapeDataString(_dueDateFrom.Value.Date.ToString("o"))}");
+        }
+        if (_dueDateTo is not null)
+        {
+            // Kraj dana da filter bude uključiv za cijeli odabrani dan, ne samo do ponoći.
+            var endOfDay = _dueDateTo.Value.Date.AddDays(1).AddTicks(-1);
+            query.Add($"dueDateTo={Uri.EscapeDataString(endOfDay.ToString("o"))}");
+        }
+        if (!string.IsNullOrEmpty(state.SortLabel) && state.SortDirection != SortDirection.None)
+        {
+            query.Add($"sortBy={state.SortLabel}");
+            query.Add($"sortDescending={(state.SortDirection == SortDirection.Descending ? "true" : "false")}");
+        }
+
+        var url = "api/caretasks" + (query.Count > 0 ? "?" + string.Join("&", query) : string.Empty);
+
+        try
+        {
+            var tasks = await Http.GetFromJsonAsync<List<CareTaskDto>>(url, cancellationToken) ?? new();
+            return new TableData<CareTaskDto> { Items = tasks, TotalItems = tasks.Count };
+        }
+        catch (HttpRequestException)
+        {
+            return new TableData<CareTaskDto> { Items = Array.Empty<CareTaskDto>(), TotalItems = 0 };
+        }
+    }
+
+    private Task ApplyFiltersAsync() => _table.ReloadServerData();
+
+    private Task ResetFiltersAsync()
+    {
+        _search = null;
+        _careTaskStatusId = null;
+        _careTaskTypeId = null;
+        _assignedStaffId = null;
+        _dueDateFrom = null;
+        _dueDateTo = null;
+        return _table.ReloadServerData();
+    }
+
+    private void OnRowClick(TableRowClickEventArgs<CareTaskDto> args)
+    {
+        Navigation.NavigateTo($"/caretasks/{args.Item!.Id}/edit");
+    }
+
+    private void NavigateToEdit(int id)
+    {
+        Navigation.NavigateTo($"/caretasks/{id}/edit");
+    }
+}
