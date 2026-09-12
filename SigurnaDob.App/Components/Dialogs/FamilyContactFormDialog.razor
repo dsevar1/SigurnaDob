@@ -1,0 +1,53 @@
+<MudDialog>
+    <TitleContent>@(ExistingContact is null ? "Novi obiteljski kontakt" : "Uredi obiteljski kontakt")</TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudTextField @bind-Value="_fullName" Label="Ime i prezime" Required="true"
+                          RequiredError="Ime i prezime su obavezni." Class="mb-2" />
+            <MudTextField @bind-Value="_relationship" Label="Srodstvo" Class="mb-2" />
+            <MudTextField @bind-Value="_phone" Label="Telefon" Class="mb-2" />
+            <MudTextField @bind-Value="_email" Label="Email" Class="mb-2" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Spremi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public record FamilyContactFormResult(string FullName, string? Relationship, string? Phone, string? Email);
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public FamilyContactDto? ExistingContact { get; set; }
+
+    private MudForm _form = null!;
+    private string _fullName = string.Empty;
+    private string? _relationship;
+    private string? _phone;
+    private string? _email;
+
+    protected override void OnInitialized()
+    {
+        if (ExistingContact is { } contact)
+        {
+            _fullName = contact.FullName;
+            _relationship = contact.Relationship;
+            _phone = contact.Phone;
+            _email = contact.Email;
+        }
+    }
+
+    private async Task Submit()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(new FamilyContactFormResult(_fullName, _relationship, _phone, _email)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

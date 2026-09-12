@@ -2,6 +2,7 @@
 @inject HttpClient Http
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <PageTitle>Profil korisnika doma</PageTitle>
 
@@ -46,6 +47,53 @@
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => Navigation.NavigateTo($"/residents/{Id}/edit"))">Uredi</MudButton>
                 </div>
             </MudPaper>
+
+            <div class="d-flex align-center mt-8 mb-2">
+                <MudText Typo="Typo.h5">Obiteljski kontakti</MudText>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenCreateContactDialogAsync">
+                    Dodaj kontakt
+                </MudButton>
+            </div>
+
+            <MudSimpleTable Dense="true" Hover="true">
+                <thead>
+                    <tr>
+                        <th>Ime i prezime</th>
+                        <th>Srodstvo</th>
+                        <th>Telefon</th>
+                        <th>Email</th>
+                        <th>Akcije</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_familyContacts.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="5"><MudText>Nema unesenih obiteljskih kontakata.</MudText></td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var contact in _familyContacts)
+                        {
+                            <tr>
+                                <td>@contact.FullName</td>
+                                <td>@(contact.Relationship ?? "—")</td>
+                                <td>@(contact.Phone ?? "—")</td>
+                                <td>@(contact.Email ?? "—")</td>
+                                <td>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                   OnClick="@(() => OpenEditContactDialogAsync(contact))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                   OnClick="@(() => DeleteContactAsync(contact))" />
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </MudSimpleTable>
         }
     </Authorized>
     <NotAuthorized>
@@ -58,6 +106,7 @@
 
     private ResidentDto? _resident;
     private bool _notFound;
+    private List<FamilyContactDto> _familyContacts = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -85,5 +134,114 @@
         }
 
         _resident = await response.Content.ReadFromJsonAsync<ResidentDto>();
+        await LoadFamilyContactsAsync();
+    }
+
+    private async Task LoadFamilyContactsAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync($"api/residents/{Id}/family-contacts");
+            if (response.IsSuccessStatusCode)
+            {
+                _familyContacts = await response.Content.ReadFromJsonAsync<List<FamilyContactDto>>() ?? new();
+            }
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti obiteljske kontakte. Provjeri je li API pokrenut.", Severity.Error);
+        }
+    }
+
+    private async Task OpenCreateContactDialogAsync()
+    {
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(FamilyContactFormDialog.ExistingContact), null);
+
+        var dialog = await DialogService.ShowAsync<FamilyContactFormDialog>("Novi obiteljski kontakt", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false } && result.Data is FamilyContactFormDialog.FamilyContactFormResult data)
+        {
+            var dto = new FamilyContactCreateDto
+            {
+                FullName = data.FullName,
+                Relationship = data.Relationship,
+                Phone = data.Phone,
+                Email = data.Email
+            };
+
+            var response = await Http.PostAsJsonAsync($"api/residents/{Id}/family-contacts", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Obiteljski kontakt je dodan.", Severity.Success);
+                await LoadFamilyContactsAsync();
+            }
+            else
+            {
+                await ShowErrorAsync(response, "Greška prilikom dodavanja kontakta.");
+            }
+        }
+    }
+
+    private async Task OpenEditContactDialogAsync(FamilyContactDto contact)
+    {
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(FamilyContactFormDialog.ExistingContact), contact);
+
+        var dialog = await DialogService.ShowAsync<FamilyContactFormDialog>("Uredi obiteljski kontakt", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false } && result.Data is FamilyContactFormDialog.FamilyContactFormResult data)
+        {
+            var dto = new FamilyContactUpdateDto
+            {
+                FullName = data.FullName,
+                Relationship = data.Relationship,
+                Phone = data.Phone,
+                Email = data.Email
+            };
+
+            var response = await Http.PutAsJsonAsync($"api/residents/{Id}/family-contacts/{contact.Id}", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Obiteljski kontakt je ažuriran.", Severity.Success);
+                await LoadFamilyContactsAsync();
+            }
+            else
+            {
+                await ShowErrorAsync(response, "Greška prilikom ažuriranja kontakta.");
+            }
+        }
+    }
+
+    private async Task DeleteContactAsync(FamilyContactDto contact)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Potvrda brisanja",
+            $"Jesi li siguran/na da želiš obrisati kontakt {contact.FullName}?",
+            yesText: "Obriši", cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var response = await Http.DeleteAsync($"api/residents/{Id}/family-contacts/{contact.Id}");
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Obiteljski kontakt je obrisan.", Severity.Success);
+            await LoadFamilyContactsAsync();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom brisanja kontakta.");
+        }
+    }
+
+    private async Task ShowErrorAsync(HttpResponseMessage response, string fallbackMessage)
+    {
+        var message = await response.Content.ReadAsStringAsync();
+        Snackbar.Add(string.IsNullOrWhiteSpace(message) ? fallbackMessage : message, Severity.Error);
     }
 }
