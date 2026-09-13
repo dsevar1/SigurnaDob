@@ -29,8 +29,24 @@ public class FamilyContactsController : ControllerBase
         }
 
         var contacts = await _db.FamilyContacts
+            .Include(fc => fc.Resident)
             .Where(fc => fc.ResidentId == residentId)
             .OrderBy(fc => fc.FullName)
+            .ToListAsync();
+
+        return Ok(contacts.Select(MapToDto).ToList());
+    }
+
+    // Apsolutna ruta (bez residentId prefiksa) - namjerno u istom kontroleru jer je logika
+    // identična, samo bez filtera po jednom residentu. Koristi Users stranica (admin bira IZMEĐU
+    // svih obiteljskih kontakata u sustavu, ne samo jednog residenta).
+    [HttpGet("/api/family-contacts")]
+    public async Task<ActionResult<List<FamilyContactDto>>> GetAllFamilyContacts()
+    {
+        var contacts = await _db.FamilyContacts
+            .Include(fc => fc.Resident)
+            .OrderBy(fc => fc.Resident!.FullName)
+            .ThenBy(fc => fc.FullName)
             .ToListAsync();
 
         return Ok(contacts.Select(MapToDto).ToList());
@@ -61,6 +77,7 @@ public class FamilyContactsController : ControllerBase
 
         _db.FamilyContacts.Add(contact);
         await _db.SaveChangesAsync();
+        await _db.Entry(contact).Reference(fc => fc.Resident).LoadAsync();
 
         return Created($"/api/residents/{residentId}/family-contacts/{contact.Id}", MapToDto(contact));
     }
@@ -116,6 +133,7 @@ public class FamilyContactsController : ControllerBase
         {
             Id = contact.Id,
             ResidentId = contact.ResidentId,
+            ResidentFullName = contact.Resident?.FullName ?? string.Empty,
             FullName = contact.FullName,
             Relationship = contact.Relationship,
             Phone = contact.Phone,

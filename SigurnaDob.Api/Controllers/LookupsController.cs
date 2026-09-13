@@ -85,12 +85,17 @@ public class LookupsController : ControllerBase
     }
 
     [HttpGet("staff")]
-    public async Task<ActionResult<List<LookupDto>>> GetStaff()
+    public async Task<ActionResult<List<LookupDto>>> GetStaff([FromQuery] bool includeInactive = false)
     {
-        var staff = await _db.Staff
-            .Where(s => s.IsActive)
+        var query = _db.Staff.AsQueryable();
+        if (!includeInactive)
+        {
+            query = query.Where(s => s.IsActive);
+        }
+
+        var staff = await query
             .OrderBy(s => s.FullName)
-            .Select(s => new LookupDto { Id = s.Id, Name = s.FullName })
+            .Select(s => new LookupDto { Id = s.Id, Name = s.FullName, IsActive = s.IsActive })
             .ToListAsync();
 
         return Ok(staff);
