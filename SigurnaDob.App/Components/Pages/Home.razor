@@ -1,10 +1,129 @@
 @page "/"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
 
 <PageTitle>Početna</PageTitle>
 
 <AuthorizeView>
     <Authorized>
-        <MudText Typo="Typo.h4" Class="mb-2">Dobrodošli, @context.User.Identity?.Name</MudText>
-        <MudText Typo="Typo.body1">Odaberite modul iz izbornika s lijeve strane.</MudText>
+        <MudText Typo="Typo.h4" Class="mb-4">Dobrodošli, @context.User.Identity?.Name</MudText>
+
+        @if (_loading)
+        {
+            <MudText>Učitavanje...</MudText>
+        }
+        else if (_dashboard is null)
+        {
+            <MudText>Odaberite modul iz izbornika s lijeve strane.</MudText>
+        }
+        else if (_dashboard.PersonalCountLabel is not null)
+        {
+            @if (_dashboard.PersonalCount is null)
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-2">
+                    Tvoj račun još nije povezan s profilom — kontaktiraj administratora.
+                </MudAlert>
+            }
+            else
+            {
+                <MudPaper Class="pa-4" MaxWidth="320px">
+                    <MudText Typo="Typo.subtitle2">@_dashboard.PersonalCountLabel</MudText>
+                    <MudText Typo="Typo.h3">@_dashboard.PersonalCount</MudText>
+                </MudPaper>
+            }
+        }
+        else
+        {
+            <MudGrid Class="mb-6">
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudPaper Class="pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.People" Color="Color.Primary" />
+                        <MudText Typo="Typo.h4">@_dashboard.ActiveResidentsCount</MudText>
+                        <MudText Typo="Typo.body2">Aktivni korisnici doma</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudPaper Class="pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.MeetingRoom" Color="Color.Primary" />
+                        <MudText Typo="Typo.h4">@_dashboard.FreeRoomSlotsCount</MudText>
+                        <MudText Typo="Typo.body2">Slobodna mjesta</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudPaper Class="pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.Assignment" Color="Color.Primary" />
+                        <MudText Typo="Typo.h4">@_dashboard.OpenCareTasksCount</MudText>
+                        <MudText Typo="Typo.body2">Otvoreni zadaci</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudPaper Class="pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.AssignmentLate" Color="@(_dashboard.OverdueCareTasksCount > 0 ? Color.Error : Color.Success)" />
+                        <MudText Typo="Typo.h4" Color="@(_dashboard.OverdueCareTasksCount > 0 ? Color.Error : Color.Success)">@_dashboard.OverdueCareTasksCount</MudText>
+                        <MudText Typo="Typo.body2">Zakašnjeli zadaci</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="4" lg="2">
+                    <MudPaper Class="pa-4">
+                        <MudIcon Icon="@Icons.Material.Filled.EventAvailable" Color="Color.Primary" />
+                        <MudText Typo="Typo.h4">@_dashboard.PendingVisitRequestsCount</MudText>
+                        <MudText Typo="Typo.body2">Zahtjevi za posjet na čekanju</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <MudText Typo="Typo.h5" Class="mb-2">Zadnjih 5 promjena</MudText>
+            @if (_dashboard.RecentChanges is null || _dashboard.RecentChanges.Count == 0)
+            {
+                <MudText>Nema nedavnih promjena.</MudText>
+            }
+            else
+            {
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>Vrijeme</th>
+                            <th>Događaj</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var change in _dashboard.RecentChanges)
+                        {
+                            <tr>
+                                <td>@change.OccurredAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                                <td>@change.Description</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        }
     </Authorized>
 </AuthorizeView>
+
+@code {
+    private DashboardDto? _dashboard;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/dashboard");
+            if (response.IsSuccessStatusCode)
+            {
+                _dashboard = await response.Content.ReadFromJsonAsync<DashboardDto>();
+            }
+            // 401 se ovdje ne očekuje (stranica je dostupna svakoj prijavljenoj ulozi), ali za svaki
+            // slučaj tiho preskačemo prikaz greške - MainLayout već redirecta neprijavljene na /login.
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti podatke za početnu stranicu. Provjeri je li API pokrenut.", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}
