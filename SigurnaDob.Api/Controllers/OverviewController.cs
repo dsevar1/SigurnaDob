@@ -78,4 +78,37 @@ public class OverviewController : ControllerBase
 
         return Ok(result);
     }
+
+    [HttpGet("calendar")]
+    public async Task<ActionResult<List<CalendarEntryDto>>> GetCalendar()
+    {
+        var today = DateTime.UtcNow.Date;
+        var entries = new List<CalendarEntryDto>();
+
+        var upcomingVisits = await _db.VisitRequests
+            .Include(v => v.Resident)
+            .Include(v => v.FamilyContact)
+            .Where(v => v.VisitRequestStatusId == VisitRequestStatusIds.Odobreno && v.RequestedAt >= today)
+            .ToListAsync();
+        entries.AddRange(upcomingVisits.Select(v => new CalendarEntryDto
+        {
+            OccursAt = v.RequestedAt,
+            Type = "Posjet",
+            Description = $"Posjet: {v.Resident?.FullName} - {v.FamilyContact?.FullName}"
+        }));
+
+        var upcomingActivities = await _db.Activities
+            .Include(a => a.ActivityType)
+            .Where(a => a.ScheduledAt >= today)
+            .ToListAsync();
+        entries.AddRange(upcomingActivities.Select(a => new CalendarEntryDto
+        {
+            OccursAt = a.ScheduledAt,
+            Type = "Aktivnost",
+            Description = $"{a.ActivityType?.Name}: {a.Name}"
+        }));
+
+        var result = entries.OrderBy(e => e.OccursAt).ToList();
+        return Ok(result);
+    }
 }
