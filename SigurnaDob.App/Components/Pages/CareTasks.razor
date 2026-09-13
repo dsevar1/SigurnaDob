@@ -53,7 +53,7 @@
                 <MudTd DataLabel="Tip">@task.CareTaskTypeName</MudTd>
                 <MudTd DataLabel="Status">@task.CareTaskStatusName</MudTd>
                 <MudTd DataLabel="Njegovatelj">@(task.AssignedStaffFullName ?? "—")</MudTd>
-                <MudTd DataLabel="Rok">@task.DueDate.ToString("dd.MM.yyyy HH:mm")</MudTd>
+                <MudTd DataLabel="Rok">@task.DueDate.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</MudTd>
                 <MudTd DataLabel="Akcije" @onclick:stopPropagation="true">
                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
                                    OnClick="@(() => NavigateToEdit(task.Id))" />

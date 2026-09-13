@@ -94,7 +94,9 @@
                 ResidentId = _model.ResidentId,
                 CareTaskTypeId = _model.CareTaskTypeId,
                 CareTaskStatusId = _model.CareTaskStatusId,
-                DueDate = dueDate,
+                // Dashboard-ov "zakašnjeli zadaci" izračun uspoređuje DueDate s DateTime.UtcNow na Api strani,
+                // pa mora stići kao UTC - isti popravak kao CompletedAt/RequestedAt (vidi CLAUDE.md).
+                DueDate = dueDate.ToUniversalTime(),
                 AssignedStaffId = _model.AssignedStaffId
             };
 

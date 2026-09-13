@@ -88,8 +88,9 @@
                 _model.CareTaskTypeId = task.CareTaskTypeId;
                 _model.CareTaskStatusId = task.CareTaskStatusId;
                 _model.AssignedStaffId = task.AssignedStaffId;
-                _model.DueDateDate = task.DueDate.Date;
-                _model.DueDateTime = task.DueDate.TimeOfDay;
+                var dueDateLocal = task.DueDate.ToLocalTime();
+                _model.DueDateDate = dueDateLocal.Date;
+                _model.DueDateTime = dueDateLocal.TimeOfDay;
             }
         }
         catch (HttpRequestException)
@@ -121,7 +122,9 @@
                 ResidentId = _model.ResidentId,
                 CareTaskTypeId = _model.CareTaskTypeId,
                 CareTaskStatusId = _model.CareTaskStatusId,
-                DueDate = dueDate,
+                // Dashboard-ov "zakašnjeli zadaci" izračun uspoređuje DueDate s DateTime.UtcNow na Api strani,
+                // pa mora stići kao UTC - isti popravak kao CompletedAt/RequestedAt (vidi CLAUDE.md).
+                DueDate = dueDate.ToUniversalTime(),
                 AssignedStaffId = _model.AssignedStaffId
             };
 

@@ -37,7 +37,7 @@
                             <td>@task.ResidentFullName</td>
                             <td>@task.CareTaskTypeName</td>
                             <td>@task.CareTaskStatusName</td>
-                            <td>@task.DueDate.ToString("dd.MM.yyyy HH:mm")</td>
+                            <td>@task.DueDate.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
                             <td>@(task.CompletionNote ?? "—")</td>
                             <td>
                                 @if (task.CareTaskStatusId == CareTaskStatusIds.Dodijeljeno)
