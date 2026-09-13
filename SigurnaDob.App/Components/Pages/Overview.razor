@@ -43,7 +43,7 @@
         }
         else
         {
-            <MudTable Items="_staffWorkload" Hover="true" Dense="true">
+            <MudTable Items="_staffWorkload" Hover="true" Dense="true" Class="mb-6">
                 <HeaderContent>
                     <MudTh>Njegovatelj</MudTh>
                     <MudTh>Otvoreni zadaci</MudTh>
@@ -57,6 +57,30 @@
                 </NoRecordsContent>
             </MudTable>
         }
+
+        <MudText Typo="Typo.h6" Class="mb-2">Nadolazeći posjeti i aktivnosti</MudText>
+        @if (_loadingCalendar)
+        {
+            <MudText>Učitavanje...</MudText>
+        }
+        else if (_groupedCalendar.Count == 0)
+        {
+            <MudText>Nema nadolazećih posjeta ni aktivnosti.</MudText>
+        }
+        else
+        {
+            @foreach (var group in _groupedCalendar)
+            {
+                <MudText Typo="Typo.subtitle1" Class="mt-3 mb-1" Style="font-weight:600">@group.Key.ToString("dd.MM.yyyy.")</MudText>
+                @foreach (var entry in group)
+                {
+                    <MudPaper Outlined="true" Class="d-flex align-center pa-2 mb-2">
+                        <MudChip T="string" Size="Size.Small" Color="@(entry.Type == "Posjet" ? Color.Info : Color.Tertiary)" Class="mr-2">@entry.Type</MudChip>
+                        <MudText>@entry.OccursAt.ToString("HH:mm") — @entry.Description</MudText>
+                    </MudPaper>
+                }
+            }
+        }
     </Authorized>
     <NotAuthorized>
         <MudAlert Severity="Severity.Warning">Nemaš ovlasti za pregled ove stranice.</MudAlert>
@@ -66,12 +90,14 @@
 @code {
     private List<RoomOverviewDto> _rooms = new();
     private List<StaffWorkloadDto> _staffWorkload = new();
+    private List<IGrouping<DateTime, CalendarEntryDto>> _groupedCalendar = new();
     private bool _loadingRooms = true;
     private bool _loadingStaff = true;
+    private bool _loadingCalendar = true;
 
     protected override async Task OnInitializedAsync()
     {
-        await Task.WhenAll(LoadRoomsAsync(), LoadStaffWorkloadAsync());
+        await Task.WhenAll(LoadRoomsAsync(), LoadStaffWorkloadAsync(), LoadCalendarAsync());
     }
 
     private async Task LoadRoomsAsync()
@@ -114,6 +140,28 @@
         finally
         {
             _loadingStaff = false;
+        }
+    }
+
+    private async Task LoadCalendarAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/overview/calendar");
+            if (response.IsSuccessStatusCode)
+            {
+                var calendar = await response.Content.ReadFromJsonAsync<List<CalendarEntryDto>>() ?? new();
+                _groupedCalendar = calendar.GroupBy(e => e.OccursAt.Date).ToList();
+            }
+            // 401/403 - <AuthorizeView> u markupu već prikazuje odgovarajuću poruku, ne treba dupli snackbar.
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti nadolazeće posjete i aktivnosti. Provjeri je li API pokrenut.", Severity.Error);
+        }
+        finally
+        {
+            _loadingCalendar = false;
         }
     }
 
