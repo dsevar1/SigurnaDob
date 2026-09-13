@@ -3,6 +3,7 @@
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject IJSRuntime JS
 
 <PageTitle>Profil korisnika doma</PageTitle>
 
@@ -94,6 +95,59 @@
                     }
                 </tbody>
             </MudSimpleTable>
+
+            <div class="d-flex align-center mt-8 mb-2">
+                <MudText Typo="Typo.h5">Dokumenti</MudText>
+            </div>
+
+            <MudSimpleTable Dense="true" Hover="true" Class="mb-2">
+                <thead>
+                    <tr>
+                        <th>Naziv</th>
+                        <th>Tip</th>
+                        <th>Veličina</th>
+                        <th>Datum uploada</th>
+                        <th>Akcije</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_documents.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="5"><MudText>Nema uploadanih dokumenata.</MudText></td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var document in _documents)
+                        {
+                            <tr>
+                                <td>@document.OriginalFileName</td>
+                                <td>@FormatDocumentType(document.ContentType)</td>
+                                <td>@FormatFileSize(document.FileSizeBytes)</td>
+                                <td>@document.UploadedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                                <td>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small"
+                                                   OnClick="@(() => DownloadDocumentAsync(document))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                   OnClick="@(() => DeleteDocumentAsync(document))" />
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </MudSimpleTable>
+
+            <MudFileUpload T="IBrowserFile" @ref="_fileUpload" FilesChanged="OnFileSelectedAsync"
+                            Accept=".pdf,.jpg,.jpeg,.png" MaxFileSize="@MaxUploadSizeBytes" Disabled="_uploading">
+                <CustomContent Context="uploadContext">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload"
+                               Disabled="_uploading" OnClick="@(() => uploadContext.OpenFilePickerAsync())">
+                        @(_uploading ? "Upload u tijeku..." : "Dodaj dokument")
+                    </MudButton>
+                </CustomContent>
+            </MudFileUpload>
+            <MudText Typo="Typo.body2" Class="mt-1">Dopušteni tipovi: PDF, JPG, PNG. Maksimalna veličina: 10 MB.</MudText>
         }
     </Authorized>
     <NotAuthorized>
@@ -104,9 +158,14 @@
 @code {
     [Parameter] public int Id { get; set; }
 
+    private const long MaxUploadSizeBytes = 10 * 1024 * 1024; // 10 MB - mora odgovarati limitu na Api strani
+
     private ResidentDto? _resident;
     private bool _notFound;
     private List<FamilyContactDto> _familyContacts = new();
+    private List<ResidentDocumentDto> _documents = new();
+    private MudFileUpload<IBrowserFile> _fileUpload = null!;
+    private bool _uploading;
 
     protected override async Task OnInitializedAsync()
     {
@@ -135,6 +194,7 @@
 
         _resident = await response.Content.ReadFromJsonAsync<ResidentDto>();
         await LoadFamilyContactsAsync();
+        await LoadDocumentsAsync();
     }
 
     private async Task LoadFamilyContactsAsync()
@@ -237,6 +297,127 @@
         {
             await ShowErrorAsync(response, "Greška prilikom brisanja kontakta.");
         }
+    }
+
+    private async Task LoadDocumentsAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync($"api/residents/{Id}/documents");
+            if (response.IsSuccessStatusCode)
+            {
+                _documents = await response.Content.ReadFromJsonAsync<List<ResidentDocumentDto>>() ?? new();
+            }
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti dokumente. Provjeri je li API pokrenut.", Severity.Error);
+        }
+    }
+
+    private async Task OnFileSelectedAsync(IBrowserFile? file)
+    {
+        if (file is null)
+        {
+            return;
+        }
+
+        _uploading = true;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+
+            // maxAllowedSize MORA biti veći od Api-jevog limita (10 MB) - IBrowserFile.OpenReadStream() ima
+            // vlastiti default limit od samo 500 KB i baca IOException prije nego podaci uopće stignu do Api-ja.
+            using var fileStream = file.OpenReadStream(maxAllowedSize: MaxUploadSizeBytes + 1);
+            using var streamContent = new StreamContent(fileStream);
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
+            content.Add(streamContent, "file", file.Name);
+
+            var response = await Http.PostAsync($"api/residents/{Id}/documents", content);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Dokument je dodan.", Severity.Success);
+                await LoadDocumentsAsync();
+            }
+            else
+            {
+                await ShowErrorAsync(response, "Greška prilikom uploada dokumenta.");
+            }
+        }
+        catch (IOException)
+        {
+            Snackbar.Add("Datoteka je prevelika.", Severity.Error);
+        }
+        finally
+        {
+            _uploading = false;
+            await _fileUpload.ClearAsync();
+        }
+    }
+
+    private async Task DownloadDocumentAsync(ResidentDocumentDto document)
+    {
+        var response = await Http.GetAsync($"api/residents/{Id}/documents/{document.Id}/download");
+        if (!response.IsSuccessStatusCode)
+        {
+            await ShowErrorAsync(response, "Greška prilikom preuzimanja dokumenta.");
+            return;
+        }
+
+        var fileStream = await response.Content.ReadAsStreamAsync();
+        using var streamRef = new DotNetStreamReference(fileStream);
+        await JS.InvokeVoidAsync("downloadFileFromStream", document.OriginalFileName, streamRef);
+    }
+
+    private async Task DeleteDocumentAsync(ResidentDocumentDto document)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Potvrda brisanja",
+            $"Jesi li siguran/na da želiš obrisati dokument {document.OriginalFileName}?",
+            yesText: "Obriši", cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var response = await Http.DeleteAsync($"api/residents/{Id}/documents/{document.Id}");
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Dokument je obrisan.", Severity.Success);
+            await LoadDocumentsAsync();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom brisanja dokumenta.");
+        }
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB" };
+        double size = bytes;
+        var unitIndex = 0;
+
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+
+        return unitIndex == 0 ? $"{size:0} {units[unitIndex]}" : $"{size:0.0} {units[unitIndex]}";
+    }
+
+    private static string FormatDocumentType(string contentType)
+    {
+        return contentType.ToLowerInvariant() switch
+        {
+            "application/pdf" => "PDF",
+            "image/jpeg" => "JPG",
+            "image/png" => "PNG",
+            _ => contentType
+        };
     }
 
     private async Task ShowErrorAsync(HttpResponseMessage response, string fallbackMessage)
