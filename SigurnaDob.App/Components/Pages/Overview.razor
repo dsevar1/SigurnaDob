@@ -1,0 +1,134 @@
+@page "/overview"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Pregled</PageTitle>
+
+<AuthorizeView Roles="Admin,Coordinator">
+    <Authorized>
+        <MudText Typo="Typo.h4" Class="mb-4">Pregled</MudText>
+
+        <MudText Typo="Typo.h6" Class="mb-2">Popunjenost soba</MudText>
+        @if (_loadingRooms)
+        {
+            <MudText>Učitavanje...</MudText>
+        }
+        else
+        {
+            <MudTable Items="_rooms" Hover="true" Dense="true" RowClassFunc="@RoomRowClassFunc" Class="mb-6">
+                <HeaderContent>
+                    <MudTh>Broj sobe</MudTh>
+                    <MudTh>Kapacitet</MudTh>
+                    <MudTh>Popunjenost</MudTh>
+                    <MudTh>Slobodno</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate Context="room">
+                    <MudTd DataLabel="Broj sobe">@room.RoomNumber</MudTd>
+                    <MudTd DataLabel="Kapacitet">@room.Capacity</MudTd>
+                    <MudTd DataLabel="Popunjenost">@room.CurrentOccupancy</MudTd>
+                    <MudTd DataLabel="Slobodno">@room.FreeSlots</MudTd>
+                    <MudTd DataLabel="Status">@room.RoomStatusName</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>Nema soba.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        }
+
+        <MudText Typo="Typo.h6" Class="mb-2">Opterećenje njegovatelja</MudText>
+        @if (_loadingStaff)
+        {
+            <MudText>Učitavanje...</MudText>
+        }
+        else
+        {
+            <MudTable Items="_staffWorkload" Hover="true" Dense="true">
+                <HeaderContent>
+                    <MudTh>Njegovatelj</MudTh>
+                    <MudTh>Otvoreni zadaci</MudTh>
+                </HeaderContent>
+                <RowTemplate Context="staff">
+                    <MudTd DataLabel="Njegovatelj">@staff.StaffFullName</MudTd>
+                    <MudTd DataLabel="Otvoreni zadaci">@staff.OpenCareTasksCount</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>Nema aktivnih njegovatelja.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Nemaš ovlasti za pregled ove stranice.</MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<RoomOverviewDto> _rooms = new();
+    private List<StaffWorkloadDto> _staffWorkload = new();
+    private bool _loadingRooms = true;
+    private bool _loadingStaff = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadRoomsAsync(), LoadStaffWorkloadAsync());
+    }
+
+    private async Task LoadRoomsAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/overview/rooms");
+            if (response.IsSuccessStatusCode)
+            {
+                _rooms = await response.Content.ReadFromJsonAsync<List<RoomOverviewDto>>() ?? new();
+            }
+            // 401/403 - <AuthorizeView> u markupu već prikazuje odgovarajuću poruku, ne treba dupli snackbar.
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti popunjenost soba. Provjeri je li API pokrenut.", Severity.Error);
+        }
+        finally
+        {
+            _loadingRooms = false;
+        }
+    }
+
+    private async Task LoadStaffWorkloadAsync()
+    {
+        try
+        {
+            var response = await Http.GetAsync("api/overview/staff-workload");
+            if (response.IsSuccessStatusCode)
+            {
+                var staff = await response.Content.ReadFromJsonAsync<List<StaffWorkloadDto>>() ?? new();
+                _staffWorkload = staff.OrderByDescending(s => s.OpenCareTasksCount).ToList();
+            }
+            // 401/403 - <AuthorizeView> u markupu već prikazuje odgovarajuću poruku, ne treba dupli snackbar.
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti opterećenje njegovatelja. Provjeri je li API pokrenut.", Severity.Error);
+        }
+        finally
+        {
+            _loadingStaff = false;
+        }
+    }
+
+    private string RoomRowClassFunc(RoomOverviewDto room, int rowIndex)
+    {
+        if (room.FreeSlots == 0)
+        {
+            return "room-row-full";
+        }
+
+        if (room.FreeSlots == 1)
+        {
+            return "room-row-low";
+        }
+
+        return string.Empty;
+    }
+}

@@ -77,3 +77,13 @@ h1:focus {
     flex-shrink: 0;
     white-space: nowrap;
 }
+
+/* Isticanje redaka na Overview.razor (tablica popunjenosti soba) - crvena za punu sobu (FreeSlots == 0),
+   žuta za sobu blizu pune (FreeSlots == 1). Prozirna pozadina da ne pregazi MudTable hover/stripe stanja. */
+.room-row-full {
+    background-color: rgba(211, 47, 47, 0.12);
+}
+
+.room-row-low {
+    background-color: rgba(237, 108, 2, 0.14);
+}
