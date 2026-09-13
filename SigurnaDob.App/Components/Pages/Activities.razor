@@ -103,6 +103,7 @@
         }
         catch (HttpRequestException)
         {
+            Snackbar.Add("Ne mogu dohvatiti popis aktivnosti. Provjeri je li API pokrenut.", Severity.Error);
             return new TableData<ActivityDto> { Items = Array.Empty<ActivityDto>(), TotalItems = 0 };
         }
     }

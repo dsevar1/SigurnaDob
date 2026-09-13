@@ -1,6 +1,7 @@
 @page "/residents"
 @inject HttpClient Http
 @inject NavigationManager Navigation
+@inject ISnackbar Snackbar
 
 <PageTitle>Korisnici doma</PageTitle>
 
@@ -119,6 +120,7 @@
         }
         catch (HttpRequestException)
         {
+            Snackbar.Add("Ne mogu dohvatiti popis korisnika doma. Provjeri je li API pokrenut.", Severity.Error);
             return new TableData<ResidentDto> { Items = Array.Empty<ResidentDto>(), TotalItems = 0 };
         }
     }

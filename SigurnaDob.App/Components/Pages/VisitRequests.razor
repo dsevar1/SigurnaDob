@@ -118,6 +118,7 @@
         }
         catch (HttpRequestException)
         {
+            Snackbar.Add("Ne mogu dohvatiti popis zahtjeva za posjet. Provjeri je li API pokrenut.", Severity.Error);
             return new TableData<VisitRequestDto> { Items = Array.Empty<VisitRequestDto>(), TotalItems = 0 };
         }
     }

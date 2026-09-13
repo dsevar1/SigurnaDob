@@ -1,6 +1,7 @@
 @page "/caretasks"
 @inject HttpClient Http
 @inject NavigationManager Navigation
+@inject ISnackbar Snackbar
 
 <PageTitle>Zadaci skrbi</PageTitle>
 
@@ -149,6 +150,7 @@
         }
         catch (HttpRequestException)
         {
+            Snackbar.Add("Ne mogu dohvatiti popis zadataka skrbi. Provjeri je li API pokrenut.", Severity.Error);
             return new TableData<CareTaskDto> { Items = Array.Empty<CareTaskDto>(), TotalItems = 0 };
         }
     }
