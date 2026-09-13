@@ -1,11 +1,13 @@
 <MudDialog>
     <TitleContent>@Title</TitleContent>
     <DialogContent>
-        <MudTextField @bind-Value="_decisionNote" Label="Napomena (neobavezno)" Lines="3" Class="mb-2" />
+        <MudTextField @bind-Value="_decisionNote" Label="Napomena (neobavezno)" Lines="3" Disabled="_isSaving" Class="mb-2" />
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="Cancel">Odustani</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Potvrdi</MudButton>
+        <MudButton OnClick="Cancel" Disabled="_isSaving">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="_isSaving">
+            @(_isSaving ? "Spremanje..." : "Potvrdi")
+        </MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -15,11 +17,29 @@
     [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
     [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
 
-    private string? _decisionNote;
+    // Dijalog se zatvara SAMO na uspješan HTTP poziv u roditelju - vidi RoomFormDialog za obrazloženje.
+    [Parameter, EditorRequired] public Func<VisitRequestDecisionResult, Task<bool>> OnSubmitAsync { get; set; } = null!;
 
-    private void Submit()
+    private string? _decisionNote;
+    private bool _isSaving;
+
+    private async Task Submit()
     {
-        MudDialog.Close(DialogResult.Ok(new VisitRequestDecisionResult(_decisionNote)));
+        var result = new VisitRequestDecisionResult(_decisionNote);
+
+        _isSaving = true;
+        try
+        {
+            var success = await OnSubmitAsync(result);
+            if (success)
+            {
+                MudDialog.Close(DialogResult.Ok(result));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
     }
 
     private void Cancel() => MudDialog.Cancel();

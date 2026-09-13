@@ -79,23 +79,31 @@
 
     private async Task NewRequestAsync()
     {
-        var dialog = await DialogService.ShowAsync<NewVisitRequestDialog>("Novi zahtjev za posjet");
-        var result = await dialog.Result;
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(NewVisitRequestDialog.OnSubmitAsync), (Func<NewVisitRequestDialog.NewVisitRequestResult, Task<bool>>)SubmitNewRequestAsync);
 
-        if (result is { Canceled: false } && result.Data is NewVisitRequestDialog.NewVisitRequestResult data)
+        var dialog = await DialogService.ShowAsync<NewVisitRequestDialog>("Novi zahtjev za posjet", parameters);
+        await dialog.Result;
+    }
+
+    private async Task<bool> SubmitNewRequestAsync(NewVisitRequestDialog.NewVisitRequestResult data)
+    {
+        var dto = new VisitRequestCreateDto { RequestedAt = data.RequestedAtUtc };
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsJsonAsync("api/visitrequests/mine", dto));
+        if (response is null)
         {
-            var dto = new VisitRequestCreateDto { RequestedAt = data.RequestedAtUtc };
-            var response = await Http.PostAsJsonAsync("api/visitrequests/mine", dto);
-            if (response.IsSuccessStatusCode)
-            {
-                Snackbar.Add("Zahtjev za posjet je poslan.", Severity.Success);
-                await LoadRequestsAsync();
-            }
-            else
-            {
-                await ShowErrorAsync(response, "Greška prilikom slanja zahtjeva.");
-            }
+            return false;
         }
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Zahtjev za posjet je poslan.", Severity.Success);
+            await LoadRequestsAsync();
+            return true;
+        }
+
+        await ShowErrorAsync(response, "Greška prilikom slanja zahtjeva.");
+        return false;
     }
 
     private async Task ShowErrorAsync(HttpResponseMessage response, string fallbackMessage)

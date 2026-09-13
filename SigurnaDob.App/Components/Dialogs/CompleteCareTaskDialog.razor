@@ -6,20 +6,22 @@
             <MudGrid Class="mb-2">
                 <MudItem xs="6">
                     <MudDatePicker Label="Datum završetka" @bind-Date="_completedAtDate" Required="true"
-                                   RequiredError="Datum završetka je obavezan." />
+                                   RequiredError="Datum završetka je obavezan." Disabled="_isSaving" />
                 </MudItem>
                 <MudItem xs="6">
                     <MudTimePicker Label="Vrijeme završetka" @bind-Time="_completedAtTime" Required="true"
-                                   RequiredError="Vrijeme završetka je obavezno." />
+                                   RequiredError="Vrijeme završetka je obavezno." Disabled="_isSaving" />
                 </MudItem>
             </MudGrid>
             <MudTextField @bind-Value="_completionNote" Label="Bilješka" Lines="3" Required="true"
-                          RequiredError="Bilješka je obavezna." Class="mb-2" />
+                          RequiredError="Bilješka je obavezna." Disabled="_isSaving" Class="mb-2" />
         </MudForm>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="Cancel">Odustani</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Završi</MudButton>
+        <MudButton OnClick="Cancel" Disabled="_isSaving">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="_isSaving">
+            @(_isSaving ? "Spremanje..." : "Završi")
+        </MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -29,10 +31,14 @@
     [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
     [Parameter, EditorRequired] public CareTaskDto CareTaskItem { get; set; } = null!;
 
+    // Dijalog se zatvara SAMO na uspješan HTTP poziv u roditelju - vidi RoomFormDialog za obrazloženje.
+    [Parameter, EditorRequired] public Func<CompleteCareTaskResult, Task<bool>> OnSubmitAsync { get; set; } = null!;
+
     private MudForm _form = null!;
     private DateTime? _completedAtDate;
     private TimeSpan? _completedAtTime;
     private string _completionNote = string.Empty;
+    private bool _isSaving;
 
     protected override void OnInitialized()
     {
@@ -49,7 +55,21 @@
         }
 
         var completedAt = _completedAtDate!.Value.Date + _completedAtTime!.Value;
-        MudDialog.Close(DialogResult.Ok(new CompleteCareTaskResult(completedAt, _completionNote)));
+        var result = new CompleteCareTaskResult(completedAt, _completionNote);
+
+        _isSaving = true;
+        try
+        {
+            var success = await OnSubmitAsync(result);
+            if (success)
+            {
+                MudDialog.Close(DialogResult.Ok(result));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
     }
 
     private void Cancel() => MudDialog.Cancel();

@@ -128,7 +128,12 @@
                 AssignedStaffId = _model.AssignedStaffId
             };
 
-            var response = await Http.PutAsJsonAsync($"api/caretasks/{Id}", dto);
+            var response = await Http.SafeSendAsync(Snackbar, () => Http.PutAsJsonAsync($"api/caretasks/{Id}", dto));
+            if (response is null)
+            {
+                return;
+            }
+
             if (response.IsSuccessStatusCode)
             {
                 Snackbar.Add("Zadatak skrbi je ažuriran.", Severity.Success);

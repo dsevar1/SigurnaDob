@@ -79,7 +79,12 @@
                 AdmissionDate = _model.AdmissionDate is null ? null : DateOnly.FromDateTime(_model.AdmissionDate.Value)
             };
 
-            var response = await Http.PostAsJsonAsync("api/residents", dto);
+            var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsJsonAsync("api/residents", dto));
+            if (response is null)
+            {
+                return;
+            }
+
             if (response.IsSuccessStatusCode)
             {
                 Snackbar.Add("Korisnik doma je kreiran.", Severity.Success);

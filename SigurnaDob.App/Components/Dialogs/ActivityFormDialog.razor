@@ -3,10 +3,10 @@
     <DialogContent>
         <MudForm @ref="_form">
             <MudTextField @bind-Value="_name" Label="Naziv" Required="true"
-                          RequiredError="Naziv je obavezan." Class="mb-2" />
-            <MudTextField @bind-Value="_description" Label="Opis" Lines="3" Class="mb-2" />
+                          RequiredError="Naziv je obavezan." Disabled="_isSaving" Class="mb-2" />
+            <MudTextField @bind-Value="_description" Label="Opis" Lines="3" Disabled="_isSaving" Class="mb-2" />
             <MudSelect T="int" @bind-Value="_activityTypeId" Label="Tip" Required="true"
-                       RequiredError="Tip je obavezan." Class="mb-2">
+                       RequiredError="Tip je obavezan." Disabled="_isSaving" Class="mb-2">
                 @foreach (var type in ActivityTypes)
                 {
                     <MudSelectItem T="int" Value="@type.Id">@type.Name</MudSelectItem>
@@ -15,18 +15,20 @@
             <MudGrid>
                 <MudItem xs="6">
                     <MudDatePicker Label="Datum termina" @bind-Date="_scheduledAtDate" Required="true"
-                                   RequiredError="Datum termina je obavezan." />
+                                   RequiredError="Datum termina je obavezan." Disabled="_isSaving" />
                 </MudItem>
                 <MudItem xs="6">
                     <MudTimePicker Label="Vrijeme termina" @bind-Time="_scheduledAtTime" Required="true"
-                                   RequiredError="Vrijeme termina je obavezno." />
+                                   RequiredError="Vrijeme termina je obavezno." Disabled="_isSaving" />
                 </MudItem>
             </MudGrid>
         </MudForm>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="Cancel">Odustani</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Spremi</MudButton>
+        <MudButton OnClick="Cancel" Disabled="_isSaving">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="_isSaving">
+            @(_isSaving ? "Spremanje..." : "Spremi")
+        </MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -37,12 +39,16 @@
     [Parameter] public ActivityDto? ExistingActivity { get; set; }
     [Parameter] public List<LookupDto> ActivityTypes { get; set; } = new();
 
+    // Dijalog se zatvara SAMO na uspješan HTTP poziv u roditelju - vidi RoomFormDialog za obrazloženje.
+    [Parameter, EditorRequired] public Func<ActivityFormResult, Task<bool>> OnSubmitAsync { get; set; } = null!;
+
     private MudForm _form = null!;
     private string _name = string.Empty;
     private string? _description;
     private int _activityTypeId;
     private DateTime? _scheduledAtDate;
     private TimeSpan? _scheduledAtTime;
+    private bool _isSaving;
 
     protected override void OnInitialized()
     {
@@ -74,7 +80,21 @@
         }
 
         var scheduledAt = _scheduledAtDate!.Value.Date + _scheduledAtTime!.Value;
-        MudDialog.Close(DialogResult.Ok(new ActivityFormResult(_name, _description, _activityTypeId, scheduledAt)));
+        var result = new ActivityFormResult(_name, _description, _activityTypeId, scheduledAt);
+
+        _isSaving = true;
+        try
+        {
+            var success = await OnSubmitAsync(result);
+            if (success)
+            {
+                MudDialog.Close(DialogResult.Ok(result));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
     }
 
     private void Cancel() => MudDialog.Cancel();

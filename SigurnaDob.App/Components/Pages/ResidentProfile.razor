@@ -217,62 +217,74 @@
     {
         var parameters = new DialogParameters();
         parameters.Add(nameof(FamilyContactFormDialog.ExistingContact), null);
+        parameters.Add(nameof(FamilyContactFormDialog.OnSubmitAsync), (Func<FamilyContactFormDialog.FamilyContactFormResult, Task<bool>>)CreateContactAsync);
 
         var dialog = await DialogService.ShowAsync<FamilyContactFormDialog>("Novi obiteljski kontakt", parameters);
-        var result = await dialog.Result;
-
-        if (result is { Canceled: false } && result.Data is FamilyContactFormDialog.FamilyContactFormResult data)
-        {
-            var dto = new FamilyContactCreateDto
-            {
-                FullName = data.FullName,
-                Relationship = data.Relationship,
-                Phone = data.Phone,
-                Email = data.Email
-            };
-
-            var response = await Http.PostAsJsonAsync($"api/residents/{Id}/family-contacts", dto);
-            if (response.IsSuccessStatusCode)
-            {
-                Snackbar.Add("Obiteljski kontakt je dodan.", Severity.Success);
-                await LoadFamilyContactsAsync();
-            }
-            else
-            {
-                await ShowErrorAsync(response, "Greška prilikom dodavanja kontakta.");
-            }
-        }
+        await dialog.Result;
     }
 
     private async Task OpenEditContactDialogAsync(FamilyContactDto contact)
     {
         var parameters = new DialogParameters();
         parameters.Add(nameof(FamilyContactFormDialog.ExistingContact), contact);
+        parameters.Add(nameof(FamilyContactFormDialog.OnSubmitAsync), (Func<FamilyContactFormDialog.FamilyContactFormResult, Task<bool>>)(data => UpdateContactAsync(contact.Id, data)));
 
         var dialog = await DialogService.ShowAsync<FamilyContactFormDialog>("Uredi obiteljski kontakt", parameters);
-        var result = await dialog.Result;
+        await dialog.Result;
+    }
 
-        if (result is { Canceled: false } && result.Data is FamilyContactFormDialog.FamilyContactFormResult data)
+    private async Task<bool> CreateContactAsync(FamilyContactFormDialog.FamilyContactFormResult data)
+    {
+        var dto = new FamilyContactCreateDto
         {
-            var dto = new FamilyContactUpdateDto
-            {
-                FullName = data.FullName,
-                Relationship = data.Relationship,
-                Phone = data.Phone,
-                Email = data.Email
-            };
+            FullName = data.FullName,
+            Relationship = data.Relationship,
+            Phone = data.Phone,
+            Email = data.Email
+        };
 
-            var response = await Http.PutAsJsonAsync($"api/residents/{Id}/family-contacts/{contact.Id}", dto);
-            if (response.IsSuccessStatusCode)
-            {
-                Snackbar.Add("Obiteljski kontakt je ažuriran.", Severity.Success);
-                await LoadFamilyContactsAsync();
-            }
-            else
-            {
-                await ShowErrorAsync(response, "Greška prilikom ažuriranja kontakta.");
-            }
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsJsonAsync($"api/residents/{Id}/family-contacts", dto));
+        if (response is null)
+        {
+            return false;
         }
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Obiteljski kontakt je dodan.", Severity.Success);
+            await LoadFamilyContactsAsync();
+            return true;
+        }
+
+        await ShowErrorAsync(response, "Greška prilikom dodavanja kontakta.");
+        return false;
+    }
+
+    private async Task<bool> UpdateContactAsync(int contactId, FamilyContactFormDialog.FamilyContactFormResult data)
+    {
+        var dto = new FamilyContactUpdateDto
+        {
+            FullName = data.FullName,
+            Relationship = data.Relationship,
+            Phone = data.Phone,
+            Email = data.Email
+        };
+
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PutAsJsonAsync($"api/residents/{Id}/family-contacts/{contactId}", dto));
+        if (response is null)
+        {
+            return false;
+        }
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Obiteljski kontakt je ažuriran.", Severity.Success);
+            await LoadFamilyContactsAsync();
+            return true;
+        }
+
+        await ShowErrorAsync(response, "Greška prilikom ažuriranja kontakta.");
+        return false;
     }
 
     private async Task DeleteContactAsync(FamilyContactDto contact)
@@ -287,7 +299,12 @@
             return;
         }
 
-        var response = await Http.DeleteAsync($"api/residents/{Id}/family-contacts/{contact.Id}");
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.DeleteAsync($"api/residents/{Id}/family-contacts/{contact.Id}"));
+        if (response is null)
+        {
+            return;
+        }
+
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add("Obiteljski kontakt je obrisan.", Severity.Success);
@@ -334,7 +351,12 @@
             streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
             content.Add(streamContent, "file", file.Name);
 
-            var response = await Http.PostAsync($"api/residents/{Id}/documents", content);
+            var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsync($"api/residents/{Id}/documents", content));
+            if (response is null)
+            {
+                return;
+            }
+
             if (response.IsSuccessStatusCode)
             {
                 Snackbar.Add("Dokument je dodan.", Severity.Success);
@@ -358,7 +380,12 @@
 
     private async Task DownloadDocumentAsync(ResidentDocumentDto document)
     {
-        var response = await Http.GetAsync($"api/residents/{Id}/documents/{document.Id}/download");
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.GetAsync($"api/residents/{Id}/documents/{document.Id}/download"));
+        if (response is null)
+        {
+            return;
+        }
+
         if (!response.IsSuccessStatusCode)
         {
             await ShowErrorAsync(response, "Greška prilikom preuzimanja dokumenta.");
@@ -382,7 +409,12 @@
             return;
         }
 
-        var response = await Http.DeleteAsync($"api/residents/{Id}/documents/{document.Id}");
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.DeleteAsync($"api/residents/{Id}/documents/{document.Id}"));
+        if (response is null)
+        {
+            return;
+        }
+
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add("Dokument je obrisan.", Severity.Success);

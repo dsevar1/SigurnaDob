@@ -3,15 +3,17 @@
     <DialogContent>
         <MudForm @ref="_form">
             <MudTextField @bind-Value="_fullName" Label="Ime i prezime" Required="true"
-                          RequiredError="Ime i prezime su obavezni." Class="mb-2" />
-            <MudTextField @bind-Value="_relationship" Label="Srodstvo" Class="mb-2" />
-            <MudTextField @bind-Value="_phone" Label="Telefon" Class="mb-2" />
-            <MudTextField @bind-Value="_email" Label="Email" Class="mb-2" />
+                          RequiredError="Ime i prezime su obavezni." Disabled="_isSaving" Class="mb-2" />
+            <MudTextField @bind-Value="_relationship" Label="Srodstvo" Disabled="_isSaving" Class="mb-2" />
+            <MudTextField @bind-Value="_phone" Label="Telefon" Disabled="_isSaving" Class="mb-2" />
+            <MudTextField @bind-Value="_email" Label="Email" Disabled="_isSaving" Class="mb-2" />
         </MudForm>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="Cancel">Odustani</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Spremi</MudButton>
+        <MudButton OnClick="Cancel" Disabled="_isSaving">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="_isSaving">
+            @(_isSaving ? "Spremanje..." : "Spremi")
+        </MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -21,11 +23,15 @@
     [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
     [Parameter] public FamilyContactDto? ExistingContact { get; set; }
 
+    // Dijalog se zatvara SAMO na uspješan HTTP poziv u roditelju - vidi RoomFormDialog za obrazloženje.
+    [Parameter, EditorRequired] public Func<FamilyContactFormResult, Task<bool>> OnSubmitAsync { get; set; } = null!;
+
     private MudForm _form = null!;
     private string _fullName = string.Empty;
     private string? _relationship;
     private string? _phone;
     private string? _email;
+    private bool _isSaving;
 
     protected override void OnInitialized()
     {
@@ -46,7 +52,21 @@
             return;
         }
 
-        MudDialog.Close(DialogResult.Ok(new FamilyContactFormResult(_fullName, _relationship, _phone, _email)));
+        var result = new FamilyContactFormResult(_fullName, _relationship, _phone, _email);
+
+        _isSaving = true;
+        try
+        {
+            var success = await OnSubmitAsync(result);
+            if (success)
+            {
+                MudDialog.Close(DialogResult.Ok(result));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
     }
 
     private void Cancel() => MudDialog.Cancel();

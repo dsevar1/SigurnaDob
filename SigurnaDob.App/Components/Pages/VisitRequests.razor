@@ -133,7 +133,12 @@
 
     private async Task ApproveAsync(VisitRequestDto visitRequest)
     {
-        var response = await Http.PostAsJsonAsync($"api/visitrequests/{visitRequest.Id}/approve", new VisitRequestDecisionDto());
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsJsonAsync($"api/visitrequests/{visitRequest.Id}/approve", new VisitRequestDecisionDto()));
+        if (response is null)
+        {
+            return;
+        }
+
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add("Zahtjev za posjet je odobren.", Severity.Success);
@@ -147,28 +152,37 @@
 
     private async Task RejectAsync(VisitRequestDto visitRequest)
     {
-        var result = await ShowDecisionDialogAsync("Odbij zahtjev za posjet");
-        if (result is null)
+        await ShowDecisionDialogAsync("Odbij zahtjev za posjet", result => RejectSubmitAsync(visitRequest.Id, result));
+    }
+
+    private async Task<bool> RejectSubmitAsync(int visitRequestId, VisitRequestDecisionDialog.VisitRequestDecisionResult result)
+    {
+        var dto = new VisitRequestDecisionDto { DecisionNote = result.DecisionNote };
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsJsonAsync($"api/visitrequests/{visitRequestId}/reject", dto));
+        if (response is null)
         {
-            return;
+            return false;
         }
 
-        var dto = new VisitRequestDecisionDto { DecisionNote = result.DecisionNote };
-        var response = await Http.PostAsJsonAsync($"api/visitrequests/{visitRequest.Id}/reject", dto);
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add("Zahtjev za posjet je odbijen.", Severity.Success);
             await _table.ReloadServerData();
+            return true;
         }
-        else
-        {
-            await ShowErrorAsync(response, "Greška prilikom odbijanja zahtjeva.");
-        }
+
+        await ShowErrorAsync(response, "Greška prilikom odbijanja zahtjeva.");
+        return false;
     }
 
     private async Task MarkHeldAsync(VisitRequestDto visitRequest)
     {
-        var response = await Http.PostAsJsonAsync($"api/visitrequests/{visitRequest.Id}/mark-held", new VisitRequestDecisionDto());
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsJsonAsync($"api/visitrequests/{visitRequest.Id}/mark-held", new VisitRequestDecisionDto()));
+        if (response is null)
+        {
+            return;
+        }
+
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add("Posjet je označen kao održan.", Severity.Success);
@@ -182,36 +196,37 @@
 
     private async Task MarkCancelledAsync(VisitRequestDto visitRequest)
     {
-        var result = await ShowDecisionDialogAsync("Otkaži posjet");
-        if (result is null)
+        await ShowDecisionDialogAsync("Otkaži posjet", result => MarkCancelledSubmitAsync(visitRequest.Id, result));
+    }
+
+    private async Task<bool> MarkCancelledSubmitAsync(int visitRequestId, VisitRequestDecisionDialog.VisitRequestDecisionResult result)
+    {
+        var dto = new VisitRequestDecisionDto { DecisionNote = result.DecisionNote };
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsJsonAsync($"api/visitrequests/{visitRequestId}/mark-cancelled", dto));
+        if (response is null)
         {
-            return;
+            return false;
         }
 
-        var dto = new VisitRequestDecisionDto { DecisionNote = result.DecisionNote };
-        var response = await Http.PostAsJsonAsync($"api/visitrequests/{visitRequest.Id}/mark-cancelled", dto);
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add("Posjet je otkazan.", Severity.Success);
             await _table.ReloadServerData();
+            return true;
         }
-        else
-        {
-            await ShowErrorAsync(response, "Greška prilikom otkazivanja posjeta.");
-        }
+
+        await ShowErrorAsync(response, "Greška prilikom otkazivanja posjeta.");
+        return false;
     }
 
-    private async Task<VisitRequestDecisionDialog.VisitRequestDecisionResult?> ShowDecisionDialogAsync(string title)
+    private async Task ShowDecisionDialogAsync(string title, Func<VisitRequestDecisionDialog.VisitRequestDecisionResult, Task<bool>> onSubmitAsync)
     {
         var parameters = new DialogParameters();
         parameters.Add(nameof(VisitRequestDecisionDialog.Title), title);
+        parameters.Add(nameof(VisitRequestDecisionDialog.OnSubmitAsync), onSubmitAsync);
 
         var dialog = await DialogService.ShowAsync<VisitRequestDecisionDialog>(title, parameters);
-        var result = await dialog.Result;
-
-        return result is { Canceled: false } && result.Data is VisitRequestDecisionDialog.VisitRequestDecisionResult data
-            ? data
-            : null;
+        await dialog.Result;
     }
 
     private async Task ShowErrorAsync(HttpResponseMessage response, string fallbackMessage)

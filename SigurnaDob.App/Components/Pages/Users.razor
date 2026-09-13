@@ -106,7 +106,12 @@
 
     private async Task LoadUsersAsync()
     {
-        var response = await Http.GetAsync("api/users");
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.GetAsync("api/users"));
+        if (response is null)
+        {
+            return;
+        }
+
         if (response.IsSuccessStatusCode)
         {
             _users = await response.Content.ReadFromJsonAsync<List<AppUserDto>>() ?? new();
@@ -121,32 +126,10 @@
         parameters.Add(nameof(AppUserFormDialog.Roles), _roles);
         parameters.Add(nameof(AppUserFormDialog.StaffOptions), _staffOptions);
         parameters.Add(nameof(AppUserFormDialog.FamilyContacts), _familyContacts);
+        parameters.Add(nameof(AppUserFormDialog.OnSubmitAsync), (Func<AppUserFormDialog.AppUserFormResult, Task<bool>>)CreateUserAsync);
 
         var dialog = await DialogService.ShowAsync<AppUserFormDialog>("Novi korisnik", parameters);
-        var result = await dialog.Result;
-
-        if (result is { Canceled: false } && result.Data is AppUserFormDialog.AppUserFormResult data)
-        {
-            var dto = new AppUserCreateDto
-            {
-                Username = data.Username ?? string.Empty,
-                Password = data.Password ?? string.Empty,
-                RoleIds = data.RoleIds,
-                StaffId = data.StaffId,
-                FamilyContactId = data.FamilyContactId
-            };
-
-            var response = await Http.PostAsJsonAsync("api/users", dto);
-            if (response.IsSuccessStatusCode)
-            {
-                Snackbar.Add("Korisnik je kreiran.", Severity.Success);
-                await LoadUsersAsync();
-            }
-            else
-            {
-                await ShowErrorAsync(response, "Greška prilikom kreiranja korisnika.");
-            }
-        }
+        await dialog.Result;
     }
 
     private async Task OpenEditDialogAsync(AppUserDto user)
@@ -156,35 +139,74 @@
         parameters.Add(nameof(AppUserFormDialog.Roles), _roles);
         parameters.Add(nameof(AppUserFormDialog.StaffOptions), _staffOptions);
         parameters.Add(nameof(AppUserFormDialog.FamilyContacts), _familyContacts);
+        parameters.Add(nameof(AppUserFormDialog.OnSubmitAsync), (Func<AppUserFormDialog.AppUserFormResult, Task<bool>>)(data => UpdateUserAsync(user.Id, data)));
 
         var dialog = await DialogService.ShowAsync<AppUserFormDialog>($"Uredi korisnika: {user.Username}", parameters);
-        var result = await dialog.Result;
+        await dialog.Result;
+    }
 
-        if (result is { Canceled: false } && result.Data is AppUserFormDialog.AppUserFormResult data)
+    private async Task<bool> CreateUserAsync(AppUserFormDialog.AppUserFormResult data)
+    {
+        var dto = new AppUserCreateDto
         {
-            var dto = new AppUserUpdateDto
-            {
-                RoleIds = data.RoleIds,
-                StaffId = data.StaffId,
-                FamilyContactId = data.FamilyContactId
-            };
+            Username = data.Username ?? string.Empty,
+            Password = data.Password ?? string.Empty,
+            RoleIds = data.RoleIds,
+            StaffId = data.StaffId,
+            FamilyContactId = data.FamilyContactId
+        };
 
-            var response = await Http.PutAsJsonAsync($"api/users/{user.Id}", dto);
-            if (response.IsSuccessStatusCode)
-            {
-                Snackbar.Add("Korisnik je ažuriran.", Severity.Success);
-                await LoadUsersAsync();
-            }
-            else
-            {
-                await ShowErrorAsync(response, "Greška prilikom ažuriranja korisnika.");
-            }
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsJsonAsync("api/users", dto));
+        if (response is null)
+        {
+            return false;
         }
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Korisnik je kreiran.", Severity.Success);
+            await LoadUsersAsync();
+            return true;
+        }
+
+        await ShowErrorAsync(response, "Greška prilikom kreiranja korisnika.");
+        return false;
+    }
+
+    private async Task<bool> UpdateUserAsync(int userId, AppUserFormDialog.AppUserFormResult data)
+    {
+        var dto = new AppUserUpdateDto
+        {
+            RoleIds = data.RoleIds,
+            StaffId = data.StaffId,
+            FamilyContactId = data.FamilyContactId
+        };
+
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PutAsJsonAsync($"api/users/{userId}", dto));
+        if (response is null)
+        {
+            return false;
+        }
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Korisnik je ažuriran.", Severity.Success);
+            await LoadUsersAsync();
+            return true;
+        }
+
+        await ShowErrorAsync(response, "Greška prilikom ažuriranja korisnika.");
+        return false;
     }
 
     private async Task ActivateUserAsync(AppUserDto user)
     {
-        var response = await Http.PostAsync($"api/users/{user.Id}/activate", null);
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsync($"api/users/{user.Id}/activate", null));
+        if (response is null)
+        {
+            return;
+        }
+
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add("Korisnik je aktiviran.", Severity.Success);
@@ -208,7 +230,12 @@
             return;
         }
 
-        var response = await Http.PostAsync($"api/users/{user.Id}/deactivate", null);
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsync($"api/users/{user.Id}/deactivate", null));
+        if (response is null)
+        {
+            return;
+        }
+
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add("Korisnik je deaktiviran.", Severity.Success);

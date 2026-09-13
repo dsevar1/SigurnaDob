@@ -121,31 +121,10 @@
         var parameters = new DialogParameters();
         parameters.Add(nameof(ActivityFormDialog.ExistingActivity), null);
         parameters.Add(nameof(ActivityFormDialog.ActivityTypes), _activityTypes);
+        parameters.Add(nameof(ActivityFormDialog.OnSubmitAsync), (Func<ActivityFormDialog.ActivityFormResult, Task<bool>>)CreateActivityAsync);
 
         var dialog = await DialogService.ShowAsync<ActivityFormDialog>("Nova aktivnost", parameters);
-        var result = await dialog.Result;
-
-        if (result is { Canceled: false } && result.Data is ActivityFormDialog.ActivityFormResult data)
-        {
-            var dto = new ActivityCreateDto
-            {
-                Name = data.Name,
-                Description = data.Description,
-                ActivityTypeId = data.ActivityTypeId,
-                ScheduledAt = data.ScheduledAt
-            };
-
-            var response = await Http.PostAsJsonAsync("api/activities", dto);
-            if (response.IsSuccessStatusCode)
-            {
-                Snackbar.Add("Aktivnost je kreirana.", Severity.Success);
-                await _table.ReloadServerData();
-            }
-            else
-            {
-                await ShowErrorAsync(response, "Greška prilikom kreiranja aktivnosti.");
-            }
-        }
+        await dialog.Result;
     }
 
     private async Task OpenEditDialogAsync(ActivityDto activity)
@@ -153,31 +132,64 @@
         var parameters = new DialogParameters();
         parameters.Add(nameof(ActivityFormDialog.ExistingActivity), activity);
         parameters.Add(nameof(ActivityFormDialog.ActivityTypes), _activityTypes);
+        parameters.Add(nameof(ActivityFormDialog.OnSubmitAsync), (Func<ActivityFormDialog.ActivityFormResult, Task<bool>>)(data => UpdateActivityAsync(activity.Id, data)));
 
         var dialog = await DialogService.ShowAsync<ActivityFormDialog>("Uredi aktivnost", parameters);
-        var result = await dialog.Result;
+        await dialog.Result;
+    }
 
-        if (result is { Canceled: false } && result.Data is ActivityFormDialog.ActivityFormResult data)
+    private async Task<bool> CreateActivityAsync(ActivityFormDialog.ActivityFormResult data)
+    {
+        var dto = new ActivityCreateDto
         {
-            var dto = new ActivityUpdateDto
-            {
-                Name = data.Name,
-                Description = data.Description,
-                ActivityTypeId = data.ActivityTypeId,
-                ScheduledAt = data.ScheduledAt
-            };
+            Name = data.Name,
+            Description = data.Description,
+            ActivityTypeId = data.ActivityTypeId,
+            ScheduledAt = data.ScheduledAt
+        };
 
-            var response = await Http.PutAsJsonAsync($"api/activities/{activity.Id}", dto);
-            if (response.IsSuccessStatusCode)
-            {
-                Snackbar.Add("Aktivnost je ažurirana.", Severity.Success);
-                await _table.ReloadServerData();
-            }
-            else
-            {
-                await ShowErrorAsync(response, "Greška prilikom ažuriranja aktivnosti.");
-            }
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsJsonAsync("api/activities", dto));
+        if (response is null)
+        {
+            return false;
         }
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Aktivnost je kreirana.", Severity.Success);
+            await _table.ReloadServerData();
+            return true;
+        }
+
+        await ShowErrorAsync(response, "Greška prilikom kreiranja aktivnosti.");
+        return false;
+    }
+
+    private async Task<bool> UpdateActivityAsync(int id, ActivityFormDialog.ActivityFormResult data)
+    {
+        var dto = new ActivityUpdateDto
+        {
+            Name = data.Name,
+            Description = data.Description,
+            ActivityTypeId = data.ActivityTypeId,
+            ScheduledAt = data.ScheduledAt
+        };
+
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PutAsJsonAsync($"api/activities/{id}", dto));
+        if (response is null)
+        {
+            return false;
+        }
+
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Aktivnost je ažurirana.", Severity.Success);
+            await _table.ReloadServerData();
+            return true;
+        }
+
+        await ShowErrorAsync(response, "Greška prilikom ažuriranja aktivnosti.");
+        return false;
     }
 
     private async Task OpenParticipantsDialogAsync(ActivityDto activity)

@@ -5,18 +5,20 @@
             <MudGrid Class="mb-2">
                 <MudItem xs="6">
                     <MudDatePicker Label="Datum posjeta" @bind-Date="_requestedAtDate" Required="true"
-                                   RequiredError="Datum posjeta je obavezan." />
+                                   RequiredError="Datum posjeta je obavezan." Disabled="_isSaving" />
                 </MudItem>
                 <MudItem xs="6">
                     <MudTimePicker Label="Vrijeme posjeta" @bind-Time="_requestedAtTime" Required="true"
-                                   RequiredError="Vrijeme posjeta je obavezno." />
+                                   RequiredError="Vrijeme posjeta je obavezno." Disabled="_isSaving" />
                 </MudItem>
             </MudGrid>
         </MudForm>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="Cancel">Odustani</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Pošalji zahtjev</MudButton>
+        <MudButton OnClick="Cancel" Disabled="_isSaving">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="_isSaving">
+            @(_isSaving ? "Slanje..." : "Pošalji zahtjev")
+        </MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -25,9 +27,13 @@
 
     [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
 
+    // Dijalog se zatvara SAMO na uspješan HTTP poziv u roditelju - vidi RoomFormDialog za obrazloženje.
+    [Parameter, EditorRequired] public Func<NewVisitRequestResult, Task<bool>> OnSubmitAsync { get; set; } = null!;
+
     private MudForm _form = null!;
     private DateTime? _requestedAtDate;
     private TimeSpan? _requestedAtTime;
+    private bool _isSaving;
 
     protected override void OnInitialized()
     {
@@ -49,8 +55,21 @@
         // (DateTimeKind.Unspecified), a Api uspoređuje RequestedAt naspram DateTime.UtcNow
         // (provjera "ne može se odobriti posjet u prošlosti") - mora stići kao UTC.
         var requestedAtUtc = requestedAtLocal.ToUniversalTime();
+        var result = new NewVisitRequestResult(requestedAtUtc);
 
-        MudDialog.Close(DialogResult.Ok(new NewVisitRequestResult(requestedAtUtc)));
+        _isSaving = true;
+        try
+        {
+            var success = await OnSubmitAsync(result);
+            if (success)
+            {
+                MudDialog.Close(DialogResult.Ok(result));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
     }
 
     private void Cancel() => MudDialog.Cancel();

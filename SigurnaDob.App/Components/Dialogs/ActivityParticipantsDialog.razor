@@ -115,7 +115,12 @@
         }
 
         var dto = new ActivityAddParticipantDto { ResidentId = _selectedResidentId.Value };
-        var response = await Http.PostAsJsonAsync($"api/activities/{ActivityId}/participants", dto);
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.PostAsJsonAsync($"api/activities/{ActivityId}/participants", dto));
+        if (response is null)
+        {
+            return;
+        }
+
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add("Sudionik je dodan.", Severity.Success);
@@ -129,7 +134,12 @@
 
     private async Task RemoveParticipantAsync(ActivityParticipantDto participant)
     {
-        var response = await Http.DeleteAsync($"api/activities/{ActivityId}/participants/{participant.ResidentId}");
+        var response = await Http.SafeSendAsync(Snackbar, () => Http.DeleteAsync($"api/activities/{ActivityId}/participants/{participant.ResidentId}"));
+        if (response is null)
+        {
+            return;
+        }
+
         if (response.IsSuccessStatusCode)
         {
             Snackbar.Add("Sudionik je uklonjen.", Severity.Success);
