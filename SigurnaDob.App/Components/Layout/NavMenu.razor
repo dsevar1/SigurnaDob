@@ -13,6 +13,11 @@
             <MudNavLink Href="activities" Icon="@Icons.Material.Filled.LocalActivity">Aktivnosti</MudNavLink>
         </Authorized>
     </AuthorizeView>
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <MudNavLink Href="users" Icon="@Icons.Material.Filled.ManageAccounts">Korisnici</MudNavLink>
+        </Authorized>
+    </AuthorizeView>
     <AuthorizeView Roles="Caregiver">
         <Authorized>
             <MudNavLink Href="mycaretasks" Icon="@Icons.Material.Filled.AssignmentInd">Moji zadaci</MudNavLink>

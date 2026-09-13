@@ -1,0 +1,129 @@
+<MudDialog>
+    <TitleContent>@(ExistingUser is null ? "Novi korisnik" : $"Uredi korisnika: {ExistingUser.Username}")</TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            @if (ExistingUser is null)
+            {
+                <MudTextField @bind-Value="_username" Label="Korisničko ime" Required="true"
+                              RequiredError="Korisničko ime je obavezno." Class="mb-2" />
+                <MudTextField @bind-Value="_password" Label="Lozinka" InputType="InputType.Password" Required="true"
+                              RequiredError="Lozinka je obavezna." Class="mb-2" />
+            }
+
+            <MudSelect T="int" MultiSelection="true" SelectedValues="_selectedRoleIds" SelectedValuesChanged="OnRolesChanged"
+                       ToStringFunc="@(id => Roles.FirstOrDefault(r => r.Id == id)?.Name ?? id.ToString())"
+                       Label="Uloge" Error="_roleError is not null" ErrorText="@_roleError" Class="mb-2">
+                @foreach (var role in Roles)
+                {
+                    <MudSelectItem T="int" Value="@role.Id">@role.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudRadioGroup T="string" @bind-Value="_linkMode" Class="mb-2">
+                <MudRadio T="string" Value="@("none")" Dense="true">Nijedan</MudRadio>
+                <MudRadio T="string" Value="@("staff")" Dense="true">Djelatnik</MudRadio>
+                <MudRadio T="string" Value="@("family")" Dense="true">Obiteljski kontakt</MudRadio>
+            </MudRadioGroup>
+
+            @if (_linkMode == "staff")
+            {
+                <MudSelect T="int?" @bind-Value="_staffId" Label="Djelatnik" Class="mb-2">
+                    @foreach (var staff in StaffOptions)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)staff.Id)">
+                            @staff.Name
+                            @if (staff.IsActive == false)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Default" Class="ml-1" Style="display:inline">(neaktivan)</MudText>
+                            }
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            }
+            else if (_linkMode == "family")
+            {
+                <MudSelect T="int?" @bind-Value="_familyContactId" Label="Obiteljski kontakt" Class="mb-2">
+                    @foreach (var contact in FamilyContacts)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)contact.Id)">@contact.FullName — @contact.ResidentFullName</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Odustani</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Spremi</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public record AppUserFormResult(string? Username, string? Password, List<int> RoleIds, int? StaffId, int? FamilyContactId);
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public AppUserDto? ExistingUser { get; set; }
+    [Parameter] public List<LookupDto> Roles { get; set; } = new();
+    [Parameter] public List<LookupDto> StaffOptions { get; set; } = new();
+    [Parameter] public List<FamilyContactDto> FamilyContacts { get; set; } = new();
+
+    private MudForm _form = null!;
+    private string _username = string.Empty;
+    private string _password = string.Empty;
+    private HashSet<int> _selectedRoleIds = new();
+    private string? _roleError;
+    private string _linkMode = "none";
+    private int? _staffId;
+    private int? _familyContactId;
+
+    protected override void OnInitialized()
+    {
+        if (ExistingUser is { } user)
+        {
+            var roleIds = Roles.Where(r => user.Roles.Contains(r.Name)).Select(r => r.Id);
+            _selectedRoleIds = new HashSet<int>(roleIds);
+
+            if (user.StaffId is not null)
+            {
+                _linkMode = "staff";
+                _staffId = user.StaffId;
+            }
+            else if (user.FamilyContactId is not null)
+            {
+                _linkMode = "family";
+                _familyContactId = user.FamilyContactId;
+            }
+        }
+    }
+
+    private void OnRolesChanged(IReadOnlyCollection<int> values)
+    {
+        _selectedRoleIds = new HashSet<int>(values);
+        if (_selectedRoleIds.Count > 0)
+        {
+            _roleError = null;
+        }
+    }
+
+    private async Task Submit()
+    {
+        await _form.ValidateAsync();
+
+        _roleError = _selectedRoleIds.Count == 0 ? "Barem jedna uloga je obavezna." : null;
+
+        if (!_form.IsValid || _roleError is not null)
+        {
+            return;
+        }
+
+        var staffId = _linkMode == "staff" ? _staffId : null;
+        var familyContactId = _linkMode == "family" ? _familyContactId : null;
+
+        var result = ExistingUser is null
+            ? new AppUserFormResult(_username, _password, _selectedRoleIds.ToList(), staffId, familyContactId)
+            : new AppUserFormResult(null, null, _selectedRoleIds.ToList(), staffId, familyContactId);
+
+        MudDialog.Close(DialogResult.Ok(result));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

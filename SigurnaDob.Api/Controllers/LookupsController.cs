@@ -84,6 +84,17 @@ public class LookupsController : ControllerBase
         return Ok(types);
     }
 
+    [HttpGet("roles")]
+    public async Task<ActionResult<List<LookupDto>>> GetRoles()
+    {
+        var roles = await _db.AppRoles
+            .OrderBy(r => r.Id)
+            .Select(r => new LookupDto { Id = r.Id, Name = r.Name })
+            .ToListAsync();
+
+        return Ok(roles);
+    }
+
     [HttpGet("staff")]
     public async Task<ActionResult<List<LookupDto>>> GetStaff([FromQuery] bool includeInactive = false)
     {

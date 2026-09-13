@@ -1,0 +1,228 @@
+@page "/users"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Korisnici</PageTitle>
+
+<AuthorizeView Roles="Admin">
+    <Authorized Context="authContext">
+        <MudText Typo="Typo.h4" Class="mb-4">Korisnici</MudText>
+
+        @if (_loading)
+        {
+            <MudText>Učitavanje...</MudText>
+        }
+        else
+        {
+            <div class="d-flex mb-4">
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="OpenCreateDialogAsync">
+                    Novi korisnik
+                </MudButton>
+            </div>
+
+            <MudTable Items="_users" Hover="true" Dense="true">
+                <HeaderContent>
+                    <MudTh>Korisničko ime</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Uloge</MudTh>
+                    <MudTh>Povezan profil</MudTh>
+                    <MudTh>Akcije</MudTh>
+                </HeaderContent>
+                <RowTemplate Context="user">
+                    <MudTd DataLabel="Korisničko ime">@user.Username</MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Color="@(user.IsActive ? Color.Success : Color.Default)" Size="Size.Small">
+                            @(user.IsActive ? "Aktivan" : "Neaktivan")
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Uloge">
+                        @foreach (var role in user.Roles)
+                        {
+                            <MudChip T="string" Size="Size.Small" Class="mr-1">@role</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Povezan profil">@(user.StaffFullName ?? user.FamilyContactFullName ?? "—")</MudTd>
+                    <MudTd DataLabel="Akcije">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                       OnClick="@(() => OpenEditDialogAsync(user))" />
+                        @if (user.IsActive)
+                        {
+                            var isSelf = user.Username == authContext.User.Identity?.Name;
+                            <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                                       Disabled="isSelf"
+                                       title="@(isSelf ? "Ne možeš deaktivirati vlastiti račun." : null)"
+                                       OnClick="@(() => DeactivateUserAsync(user))">
+                                Deaktiviraj
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Text" Color="Color.Success" Size="Size.Small"
+                                       OnClick="@(() => ActivateUserAsync(user))">
+                                Aktiviraj
+                            </MudButton>
+                        }
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>Nema korisnika.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Nemaš ovlasti za pregled korisnika.</MudAlert>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<AppUserDto> _users = new();
+    private List<LookupDto> _roles = new();
+    private List<LookupDto> _staffOptions = new();
+    private List<FamilyContactDto> _familyContacts = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _roles = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/roles") ?? new();
+            _staffOptions = await Http.GetFromJsonAsync<List<LookupDto>>("api/lookups/staff?includeInactive=true") ?? new();
+            _familyContacts = await Http.GetFromJsonAsync<List<FamilyContactDto>>("api/family-contacts") ?? new();
+            await LoadUsersAsync();
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Ne mogu dohvatiti podatke. Provjeri je li API pokrenut.", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        var response = await Http.GetAsync("api/users");
+        if (response.IsSuccessStatusCode)
+        {
+            _users = await response.Content.ReadFromJsonAsync<List<AppUserDto>>() ?? new();
+        }
+        // 401/403 - <AuthorizeView> u markupu već prikazuje odgovarajuću poruku, ne treba dupli snackbar.
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(AppUserFormDialog.ExistingUser), null);
+        parameters.Add(nameof(AppUserFormDialog.Roles), _roles);
+        parameters.Add(nameof(AppUserFormDialog.StaffOptions), _staffOptions);
+        parameters.Add(nameof(AppUserFormDialog.FamilyContacts), _familyContacts);
+
+        var dialog = await DialogService.ShowAsync<AppUserFormDialog>("Novi korisnik", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false } && result.Data is AppUserFormDialog.AppUserFormResult data)
+        {
+            var dto = new AppUserCreateDto
+            {
+                Username = data.Username ?? string.Empty,
+                Password = data.Password ?? string.Empty,
+                RoleIds = data.RoleIds,
+                StaffId = data.StaffId,
+                FamilyContactId = data.FamilyContactId
+            };
+
+            var response = await Http.PostAsJsonAsync("api/users", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Korisnik je kreiran.", Severity.Success);
+                await LoadUsersAsync();
+            }
+            else
+            {
+                await ShowErrorAsync(response, "Greška prilikom kreiranja korisnika.");
+            }
+        }
+    }
+
+    private async Task OpenEditDialogAsync(AppUserDto user)
+    {
+        var parameters = new DialogParameters();
+        parameters.Add(nameof(AppUserFormDialog.ExistingUser), user);
+        parameters.Add(nameof(AppUserFormDialog.Roles), _roles);
+        parameters.Add(nameof(AppUserFormDialog.StaffOptions), _staffOptions);
+        parameters.Add(nameof(AppUserFormDialog.FamilyContacts), _familyContacts);
+
+        var dialog = await DialogService.ShowAsync<AppUserFormDialog>($"Uredi korisnika: {user.Username}", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false } && result.Data is AppUserFormDialog.AppUserFormResult data)
+        {
+            var dto = new AppUserUpdateDto
+            {
+                RoleIds = data.RoleIds,
+                StaffId = data.StaffId,
+                FamilyContactId = data.FamilyContactId
+            };
+
+            var response = await Http.PutAsJsonAsync($"api/users/{user.Id}", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Korisnik je ažuriran.", Severity.Success);
+                await LoadUsersAsync();
+            }
+            else
+            {
+                await ShowErrorAsync(response, "Greška prilikom ažuriranja korisnika.");
+            }
+        }
+    }
+
+    private async Task ActivateUserAsync(AppUserDto user)
+    {
+        var response = await Http.PostAsync($"api/users/{user.Id}/activate", null);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Korisnik je aktiviran.", Severity.Success);
+            await LoadUsersAsync();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom aktivacije korisnika.");
+        }
+    }
+
+    private async Task DeactivateUserAsync(AppUserDto user)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Potvrda deaktivacije",
+            $"Jesi li siguran/na da želiš deaktivirati korisnika {user.Username}? Deaktivirani korisnik se neće moći prijaviti.",
+            yesText: "Deaktiviraj", cancelText: "Odustani");
+
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        var response = await Http.PostAsync($"api/users/{user.Id}/deactivate", null);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Korisnik je deaktiviran.", Severity.Success);
+            await LoadUsersAsync();
+        }
+        else
+        {
+            await ShowErrorAsync(response, "Greška prilikom deaktivacije korisnika.");
+        }
+    }
+
+    private async Task ShowErrorAsync(HttpResponseMessage response, string fallbackMessage)
+    {
+        var message = await response.Content.ReadAsStringAsync();
+        Snackbar.Add(string.IsNullOrWhiteSpace(message) ? fallbackMessage : message, Severity.Error);
+    }
+}
